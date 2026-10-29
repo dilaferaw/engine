@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, getNickname, getToken, setNickname } from "../api";
+import { CopyButton } from "./CopyButton";
 import {
   BOARD_THEMES,
   PIECE_SETS,
@@ -192,9 +193,16 @@ export function Lobby({ onOpen }: Props) {
             </div>
           )}
 
-          <p className="mt-4 break-all text-[10px] text-slate-600">
-            session token {getToken().slice(0, 8)}…
-          </p>
+          <div className="mt-4 flex items-center justify-between gap-2 border-t border-white/5 pt-3">
+            <span className="truncate text-[10px] text-slate-600">
+              token {getToken().slice(0, 8)}…
+            </span>
+            <CopyButton
+              text={getToken()}
+              idleLabel="Copy player code"
+              className="shrink-0 rounded-md border border-white/10 px-2 py-1 text-[10px] font-medium text-slate-400 transition hover:bg-white/5 hover:text-slate-200"
+            />
+          </div>
         </section>
       </main>
     </div>

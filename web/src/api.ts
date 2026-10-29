@@ -24,12 +24,44 @@ export function forceNewToken(): string {
   return token;
 }
 
+// The nickname is per-tab: two tabs in the same browser are two players, so
+// neither should inherit the other's name.
 export function getNickname(): string {
-  return localStorage.getItem(NAME_KEY)?.trim() ?? "";
+  const scoped = sessionStorage.getItem(NAME_KEY)?.trim();
+  if (scoped) return scoped;
+  const legacy = localStorage.getItem(NAME_KEY)?.trim() ?? "";
+  if (legacy) {
+    sessionStorage.setItem(NAME_KEY, legacy);
+    localStorage.removeItem(NAME_KEY);
+  }
+  return legacy;
 }
 
 export function setNickname(name: string): void {
-  localStorage.setItem(NAME_KEY, name.slice(0, 24));
+  sessionStorage.setItem(NAME_KEY, name.slice(0, 24));
+}
+
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const field = document.createElement("textarea");
+    field.value = text;
+    field.setAttribute("readonly", "");
+    field.style.position = "fixed";
+    field.style.opacity = "0";
+    document.body.appendChild(field);
+    field.select();
+    let ok = false;
+    try {
+      ok = document.execCommand("copy");
+    } catch {
+      ok = false;
+    }
+    field.remove();
+    return ok;
+  }
 }
 
 export class ApiError extends Error {

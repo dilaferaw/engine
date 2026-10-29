@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../api";
+import { CopyButton } from "./CopyButton";
 import type { Color, GameState, Move } from "../types";
 import { Board } from "./Board";
 
@@ -194,15 +195,6 @@ export function GameScreen({ gameId, onLeave }: Props) {
     }
   };
 
-  const copyLink = async () => {
-    const url = `${window.location.origin}${window.location.pathname}#/game/${gameId}`;
-    try {
-      await navigator.clipboard.writeText(url);
-    } catch {
-      window.prompt("Copy this link", url);
-    }
-  };
-
   const join = async () => {
     try {
       setState(await api.joinGame(gameId));
@@ -245,6 +237,8 @@ export function GameScreen({ gameId, onLeave }: Props) {
     : state.is_draw
       ? "Draw"
       : `${COLOR_LABEL[board.turn]} to move`;
+  const inviteUrl = `${window.location.origin}${window.location.pathname}#/game/${gameId}`;
+  const seatsFull = state.seats.WHITE && state.seats.BLACK;
 
   return (
     <div className="min-h-screen">
@@ -257,14 +251,17 @@ export function GameScreen({ gameId, onLeave }: Props) {
             <span className="grid h-7 w-7 place-items-center rounded-lg bg-emerald-500 text-emerald-950">♟</span>
             Checkers
           </button>
-          <div className="hidden items-center gap-2 text-xs text-slate-400 sm:flex">
-            <span className="rounded-md bg-white/5 px-2 py-1 font-mono">#{gameId.slice(0, 8)}</span>
-            <button
-              onClick={() => void copyLink()}
-              className="rounded-md border border-white/10 px-2.5 py-1 font-medium text-slate-200 transition hover:bg-white/10"
-            >
-              Invite friend
-            </button>
+          <div className="flex items-center gap-2 text-xs text-slate-400">
+            <span className="hidden rounded-md bg-white/5 px-2 py-1 font-mono sm:block">
+              #{gameId.slice(0, 8)}
+            </span>
+            {!seatsFull && (
+              <CopyButton
+                text={inviteUrl}
+                idleLabel="Invite friend"
+                className="rounded-md border border-white/10 px-2.5 py-1 font-medium text-slate-200 transition hover:bg-white/10"
+              />
+            )}
           </div>
         </div>
       </header>
@@ -342,9 +339,13 @@ export function GameScreen({ gameId, onLeave }: Props) {
                 Join game
               </button>
             )}
-            <button onClick={() => void copyLink()} className="btn-ghost">
-              Copy invite link
-            </button>
+            {!seatsFull && (
+              <CopyButton
+                text={inviteUrl}
+                idleLabel="Copy invite link"
+                className="btn-ghost"
+              />
+            )}
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => void undo()}
