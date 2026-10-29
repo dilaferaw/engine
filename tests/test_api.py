@@ -170,6 +170,54 @@ def test_move_rejected_out_of_turn(client: TestClient) -> None:
     assert resp.status_code == 403
 
 
+def test_rematch_resets_after_both_accept(client: TestClient) -> None:
+    game_id = client.post(
+        "/games", headers={"X-Player-Token": "alice"}
+    ).json()["game_id"]
+    client.post(f"/games/{game_id}/join", headers={"X-Player-Token": "bob"})
+    client.post(
+        f"/games/{game_id}/moves",
+        json={"from_sq": 41, "to_sq": 32},
+        headers={"X-Player-Token": "alice"},
+    )
+    first = client.post(
+        f"/games/{game_id}/rematch", headers={"X-Player-Token": "alice"}
+    ).json()
+    assert first["rematch"] == {"WHITE": True, "BLACK": False}
+    assert first["move_count"] == 1
+    second = client.post(
+        f"/games/{game_id}/rematch", headers={"X-Player-Token": "bob"}
+    ).json()
+    assert second["move_count"] == 0
+    assert second["rematch"] == {"WHITE": False, "BLACK": False}
+    assert second["board"]["turn"] == "WHITE"
+    assert second["board"]["squares"][41] == {"player": "WHITE", "kind": "MAN"}
+
+
+def test_rematch_requires_a_seat(client: TestClient) -> None:
+    game_id = client.post(
+        "/games", headers={"X-Player-Token": "alice"}
+    ).json()["game_id"]
+    resp = client.post(
+        f"/games/{game_id}/rematch", headers={"X-Player-Token": "eve"}
+    )
+    assert resp.status_code == 403
+
+
+def test_decline_rematch_clears_requests(client: TestClient) -> None:
+    game_id = client.post(
+        "/games", headers={"X-Player-Token": "alice"}
+    ).json()["game_id"]
+    client.post(f"/games/{game_id}/join", headers={"X-Player-Token": "bob"})
+    client.post(
+        f"/games/{game_id}/rematch", headers={"X-Player-Token": "alice"}
+    )
+    cleared = client.post(
+        f"/games/{game_id}/rematch/decline", headers={"X-Player-Token": "bob"}
+    ).json()
+    assert cleared["rematch"] == {"WHITE": False, "BLACK": False}
+
+
 def test_forced_multi_capture_is_the_only_legal_move(client: TestClient) -> None:
     squares = [None] * 64
     squares[41] = {"player": "WHITE", "kind": "MAN"}

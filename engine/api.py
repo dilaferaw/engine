@@ -102,11 +102,14 @@ def _state(
     token: str | None = None,
     names: dict[str, str | None] | None = None,
     history: list[dict[str, Any]] | None = None,
+    rematch: dict[str, bool] | None = None,
 ) -> dict[str, Any]:
     result = winner(board)
     seats = seats if seats is not None else _fresh_seats()
     names = names if names is not None else _fresh_names()
     moves = list(history or [])
+    rematch = rematch if rematch is not None else {"WHITE": False, "BLACK": False}
+    over = result is not None or is_draw(board)
     return {
         "game_id": game_id,
         "board": board.to_dict(),
@@ -119,6 +122,8 @@ def _state(
         "names": {color: names.get(color) for color in ("WHITE", "BLACK")},
         "history": moves,
         "move_count": len(moves),
+        "game_over": over,
+        "rematch": {color: rematch[color] for color in ("WHITE", "BLACK")},
     }
 
 
@@ -146,6 +151,7 @@ def create_app() -> FastAPI:
     seats: dict[str, Seat] = {}
     names: dict[str, dict[str, str | None]] = {}
     history: dict[str, list[dict[str, Any]]] = {}
+    rematches: dict[str, dict[str, bool]] = {}
 
     def remember_name(game_id: str, token: str | None, name: str | None) -> None:
         cleaned = _clean_name(name)
@@ -178,6 +184,7 @@ def create_app() -> FastAPI:
         seats[game_id] = game_seats
         names[game_id] = _fresh_names()
         history[game_id] = []
+        rematches[game_id] = {"WHITE": False, "BLACK": False}
         remember_name(game_id, token, name)
         return GameCreated(game_id=game_id)
 
@@ -196,7 +203,13 @@ def create_app() -> FastAPI:
             game_seats[free] = token
         remember_name(game_id, token, name)
         return _state(
-            game_id, board, game_seats, token, names[game_id], history[game_id]
+            game_id,
+            board,
+            game_seats,
+            token,
+            names[game_id],
+            history[game_id],
+            rematches[game_id],
         )
 
     @app.get("/games")
@@ -212,6 +225,7 @@ def create_app() -> FastAPI:
             token,
             names[game_id],
             history[game_id],
+            rematches[game_id],
         )
 
     @app.get("/games/{game_id}/moves")
@@ -235,7 +249,13 @@ def create_app() -> FastAPI:
         played["player"] = color
         history[game_id].append(played)
         return _state(
-            game_id, board, seats[game_id], token, names[game_id], history[game_id]
+            game_id,
+            board,
+            seats[game_id],
+            token,
+            names[game_id],
+            history[game_id],
+            rematches[game_id],
         )
 
     @app.post("/games/{game_id}/undo")
@@ -247,8 +267,51 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         if history[game_id]:
             history[game_id].pop()
+        rematches[game_id] = {"WHITE": False, "BLACK": False}
         return _state(
-            game_id, board, seats[game_id], token, names[game_id], history[game_id]
+            game_id,
+            board,
+            seats[game_id],
+            token,
+            names[game_id],
+            history[game_id],
+            rematches[game_id],
+        )
+
+    @app.post("/games/{game_id}/rematch")
+    def request_rematch(game_id: str, token: TokenHeader = None) -> dict[str, Any]:
+        board = _get(games, game_id)
+        color = _color_for(seats[game_id], token)
+        if color is None:
+            raise HTTPException(status_code=403, detail="not a player in this game")
+        rematches[game_id][color] = True
+        if all(rematches[game_id].values()):
+            games[game_id] = Board.setup()
+            history[game_id] = []
+            rematches[game_id] = {"WHITE": False, "BLACK": False}
+            board = games[game_id]
+        return _state(
+            game_id,
+            board,
+            seats[game_id],
+            token,
+            names[game_id],
+            history[game_id],
+            rematches[game_id],
+        )
+
+    @app.post("/games/{game_id}/rematch/decline")
+    def decline_rematch(game_id: str, token: TokenHeader = None) -> dict[str, Any]:
+        board = _get(games, game_id)
+        rematches[game_id] = {"WHITE": False, "BLACK": False}
+        return _state(
+            game_id,
+            board,
+            seats[game_id],
+            token,
+            names[game_id],
+            history[game_id],
+            rematches[game_id],
         )
 
     @app.delete("/games/{game_id}", status_code=204)

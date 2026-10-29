@@ -33,4 +33,6 @@ export interface GameState {
   names: Record<Color, string | null>;
   history: MoveRecord[];
   move_count: number;
+  game_over: boolean;
+  rematch: Record<Color, boolean>;
 }

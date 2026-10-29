@@ -76,4 +76,8 @@ export const api = {
     request(`/games/${id}/moves`, { method: "POST", body: JSON.stringify(move) }),
   undo: (id: string): Promise<GameState> =>
     request(`/games/${id}/undo`, { method: "POST" }),
+  rematch: (id: string): Promise<GameState> =>
+    request(`/games/${id}/rematch`, { method: "POST" }),
+  declineRematch: (id: string): Promise<GameState> =>
+    request(`/games/${id}/rematch/decline`, { method: "POST" }),
 };
