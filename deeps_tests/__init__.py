@@ -1,0 +1,1 @@
+"""Independent verification tests for the checkers engine."""

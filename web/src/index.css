@@ -1,0 +1,136 @@
+@import "tailwindcss";
+
+@theme {
+  --color-board-light: #eeeed2;
+  --color-board-dark: #769656;
+  --color-ink: #0b1220;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, #1e293b 0%, transparent 60%),
+    #0b1220;
+  color: #e2e8f0;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv11";
+}
+
+.board-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  aspect-ratio: 1 / 1;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 24px 60px -20px rgba(0, 0, 0, 0.8),
+    0 8px 20px -8px rgba(0, 0, 0, 0.6);
+}
+
+.piece {
+  border-radius: 9999px;
+  transition: transform 120ms ease;
+  will-change: transform;
+}
+
+.piece:hover {
+  transform: scale(1.03);
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pop-in {
+  animation: pop-in 180ms ease-out both;
+}
+
+@keyframes pulse-ring {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.pulse-ring {
+  animation: pulse-ring 1.6s ease-in-out infinite;
+}
+
+.card {
+  border-radius: 0.75rem;
+  border: 1px solid rgb(255 255 255 / 0.07);
+  background: linear-gradient(180deg, rgb(15 23 42 / 0.75), rgb(15 23 42 / 0.55));
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 10px 30px -18px rgb(0 0 0 / 0.8);
+}
+
+.board-wrap {
+  border-radius: 10px;
+  padding: 4px;
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(0 0 0 / 0.25));
+  box-shadow: 0 18px 40px -22px rgb(0 0 0 / 0.9);
+}
+
+.btn-primary,
+.btn-ghost,
+.btn-subtle {
+  border-radius: 0.5rem;
+  padding: 0.6rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: background-color 120ms ease, border-color 120ms ease, opacity 120ms ease;
+}
+
+.btn-primary {
+  background: #10b981;
+  color: #052e22;
+}
+.btn-primary:hover {
+  background: #34d399;
+}
+
+.btn-ghost {
+  border: 1px solid rgb(255 255 255 / 0.1);
+  background: rgb(255 255 255 / 0.05);
+  color: #e2e8f0;
+}
+.btn-ghost:hover {
+  background: rgb(255 255 255 / 0.1);
+}
+
+.btn-subtle {
+  border: 1px solid rgb(255 255 255 / 0.08);
+  color: #cbd5e1;
+  font-weight: 500;
+}
+.btn-subtle:hover:not(:disabled) {
+  background: rgb(255 255 255 / 0.05);
+}
+.btn-subtle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse-ring,
+  .pop-in {
+    animation: none;
+  }
+}

@@ -1,0 +1,829 @@
+================================================================================
+CHECKERS ENGINE — IMPLEMENTATION SPECIFICATION
+Version 1.0 — Chunk 1 (Engine only)
+================================================================================
+This document is the authoritative reference for the engine phase. If the
+code and this document disagree, the code is wrong until proven otherwise.
+If this document is ambiguous, stop and resolve the ambiguity with a test
+before writing more code (see §17).
+
+--------------------------------------------------------------------------------
+TABLE OF CONTENTS
+--------------------------------------------------------------------------------
+ 1. Project overview and scope
+ 2. Glossary
+ 3. Board geometry and conventions
+ 4. Pieces and movement
+ 5. Captures
+ 6. Death squares
+ 7. Promotion and poisoning
+ 8. Freezing
+ 9. Turn order and legality
+10. Win and draw
+11. API-readiness constraints
+12. Data model
+13. Serialization schemas
+14. Error handling policy
+15. Testing philosophy
+16. Commit plan C00-C24
+17. Ambiguities to resolve and lock (decision log)
+18. Definition of done - Chunk 1
+19. Out of scope
+20. Session protocol with the tutor
+21. Appendix: square index map and worked positions
+
+--------------------------------------------------------------------------------
+1. PROJECT OVERVIEW AND SCOPE
+--------------------------------------------------------------------------------
+A custom checkers variant with three novel mechanics: death squares, freezing,
+and promotion poisoning. The engine is a pure-Python library with NO HTTP, NO
+database, NO AI, and NO frontend. It will later be imported by a FastAPI
+service and by a web/Android client, so its public surface must be
+serializable and free of module-level mutable state.
+
+In scope for this chunk:
+  - engine/ package (constants, geometry, board, moves, legality, rules,
+    notation)
+  - tests/ package with unit tests and a fuzz suite
+  - a REPL-playable golden game recorded as a regression test
+
+Out of scope for this chunk: everything in §19.
+
+--------------------------------------------------------------------------------
+2. GLOSSARY
+--------------------------------------------------------------------------------
+Square          An int 0..63. sq = rank*8 + file. See §3.1.
+File            0..7, 'a'..'h'. file = sq % 8.
+Rank            0..7, '1'..'8'. rank = sq // 8.
+Player          WHITE or BLACK.
+Piece kind      MAN or KING.
+Home row        The four dark squares on the rank a player starts on. §3.6.
+Promotion sq    a1 for WHITE, h8 for BLACK. §3.5.
+Death square    A square on which any landing piece dies. §3.7, §6.
+Poisoned        A side whose home row has been turned entirely into death
+                because the opponent promoted. §3.8, §7.
+Frozen          A piece whose only available capture is a single (length-1)
+                capture, and which is therefore immobile. §8.
+Single capture  A capture sequence of length 1. ILLEGAL as a move. §5.1.
+Multi-capture   A capture sequence of length >= 2. The only legal captures. §5.
+Grandfathered   A just-promoted king standing on its promotion square is
+                safe there. §7.3.
+Quiet move      A non-capture move. Includes voluntary death. §6.3, §9.5.
+Legal move      A Move object returned by legal_moves(board). §9.
+Playout         One full game driven by legal_moves. Used by fuzz tests.
+
+--------------------------------------------------------------------------------
+3. BOARD GEOMETRY AND CONVENTIONS
+--------------------------------------------------------------------------------
+
+3.1 SQUARE INDEXING
+  Squares are ints 0..63.
+    sq = rank * 8 + file
+    file = sq % 8        (0='a' ... 7='h')
+    rank = sq // 8       (0='1' ... 7='8')
+  a1 = 0. h8 = 63.
+  a1 is a DARK square. a1-h8 is the unique 8-square dark diagonal.
+
+3.2 ORIENTATION
+  WHITE starts on ranks 6-8 (top of the printed board) and moves toward
+  rank 0. White forward = rank decreasing.
+  BLACK starts on ranks 1-3 (bottom) and moves toward rank 7. Black
+  forward = rank increasing.
+
+3.3 DARK SQUARES (PLAYABLE)
+  A square is playable iff (file + rank) is even.
+  Equivalently: file and rank have the same parity.
+  There are 32 playable squares. Pieces never leave the playable squares.
+
+3.4 DIAGONAL DIRECTIONS AND OFFSETS
+  Four directions: NE, NW, SE, SW.
+  Approximate offsets (valid only when you have already checked the file
+  boundary — never add them blindly):
+    NE = +9   (file+1, rank+1)
+    NW = +7   (file-1, rank+1)
+    SE = -7   (file+1, rank-1)
+    SW = -9   (file-1, rank-1)
+  Forward directions:
+    WHITE forward = {SE, SW}   (rank decreasing)
+    BLACK forward = {NE, NW}   (rank increasing)
+  Man capture directions: all four.
+  King move/capture directions: all four.
+
+3.5 PROMOTION SQUARES
+    promotion_square(WHITE) = a1 = 0
+    promotion_square(BLACK) = h8 = 63
+
+3.6 HOME ROWS
+  The four dark squares on the rank a player starts on.
+    home_row(WHITE) = {b8, d8, f8, h8} = {57, 59, 61, 63}
+    home_row(BLACK) = {a1, c1, e1, g1} = {0, 2, 4, 6}
+
+3.7 DEATH SQUARES (STATIC)
+  The three static death squares on the rank a player promotes on, i.e.
+  the opponent's home row minus this player's promotion square.
+    death_squares(WHITE) = {c1, e1, g1} = {2, 4, 6}
+    death_squares(BLACK) = {b8, d8, f8} = {57, 59, 61}
+  Identity (must hold as an invariant, write a test for it):
+    death_squares(p) | {promotion_square(p)} == home_row(other(p))
+  The set of static death squares (regardless of owner) is the union:
+    {c1, e1, g1, b8, d8, f8} = {2, 4, 6, 57, 59, 61}
+
+3.8 POISON FLAG
+  Board holds poisoned: dict[Player, bool], initially {WHITE: False,
+  BLACK: False}. A side is "poisoned" when its own home_row has been
+  turned into all-death because the OPPONENT promoted. See §7.
+
+3.9 QUICK REFERENCE
+    a1 = 0     b8 = 57    h8 = 63
+    WHITE promo = 0,  home = {57,59,61,63}, death = {2,4,6}
+    BLACK promo = 63, home = {0,2,4,6},    death = {57,59,61}
+    WHITE forward ranks: decreasing.  BLACK forward ranks: increasing.
+    Initial pieces per side: 12.  Playable squares: 32.
+
+  Standard starting position (see §21 for the full map):
+    WHITE: {41,43,45,47, 48,50,52,54, 57,59,61,63}
+    BLACK: {0,2,4,6, 9,11,13,15, 16,18,20,22}
+
+--------------------------------------------------------------------------------
+4. PIECES AND MOVEMENT
+--------------------------------------------------------------------------------
+
+R1.1  Board is 8x8; play on dark squares only.
+R1.2  12 pieces per side, standard pool-checkers layout (3 rows x 4).
+R1.3  Pieces never change square colour (guaranteed by playable squares).
+
+R2.1  MAN moves forward one square diagonally.
+R2.2  MAN captures forward AND backward. (See R3.6.)
+R2.3  KING slides any distance along a diagonal (all four directions).
+R2.4  KING captures by flying. (See R3.6 and §17 ambiguity A4.)
+R2.5  A non-capture move cannot jump over any piece.
+R2.6  A move cannot pass beyond the board edge.
+
+Notes:
+  - Quiet moves land on an empty square.
+  - "Blocked" means the landing square is off-board or occupied.
+  - For kings, the slide stops at the first blocker; no landing beyond it.
+  - Quiet moves are only generated when no capture exists for the side
+    to move (§9.5).
+
+--------------------------------------------------------------------------------
+5. CAPTURES
+--------------------------------------------------------------------------------
+
+R3.1  A single capture (length 1) is an ILLEGAL move. Only captures of
+      length >= 2 ("multi-captures") are legal moves.
+      Consequence: a piece whose only capture is length 1 is FROZEN (§8).
+R3.2  Captures are FORCED: if any legal multi-capture exists for the side
+      to move, that side must capture. Quiet moves are not available.
+R3.3  MAX-CAPTURE RULE: among available captures, only the longest
+      sequence(s) are legal. Length = number of pieces captured, not
+      squares travelled.
+R3.4  Ties for max length: the player chooses among them. The engine
+      returns all tied moves; the caller chooses.
+R3.5  DEATH TRUNCATION: if a capture sequence lands on a death square
+      mid-way, the sequence ends there. Pieces captured BEFORE the dying
+      landing still count toward length. The dying landing piece is
+      removed. The resulting Move has dies = True.
+R3.6  Capture directions:
+        MAN:  all four diagonals (forward and backward).
+        KING: all four diagonals.
+R3.7  A multi-capture must not capture the same piece twice and must not
+      revisit a square (see §17 ambiguity A5 for whether captured pieces
+      remain as blockers during the sequence).
+R3.8  A frozen piece never appears in legal_moves output (§8).
+
+--------------------------------------------------------------------------------
+6. DEATH SQUARES
+--------------------------------------------------------------------------------
+
+R4.1  Landing on a death square KILLS the piece: man or king, either
+      colour.
+R4.2  Death is NEUTRAL: the piece is removed; nobody gets capture credit;
+      a death does not count toward capture length.
+R4.3  VOLUNTARY DEATH: moving a non-frozen piece onto a death square as a
+      NORMAL (non-capture) move is a legal pass. The piece is removed,
+      the turn flips. See §17 ambiguity A6 (last piece).
+R4.4  A frozen piece cannot voluntarily die. It cannot move at all.
+R4.5  A square is a death square in the current position iff EITHER:
+        (a) it is a static death square (§3.7 union), OR
+        (b) it is on a home row whose owner is poisoned:
+              poisoned[side] is True and sq in home_row(side)
+      Note: (a) and (b) overlap on c1,e1,g1 / b8,d8,f8.
+      Implementation hint: write is_death_square(sq, board) as a single
+      source of truth and call it everywhere. Do not inline the logic.
+R4.6  GRANDFATHERING: a just-promoted king is safe while standing on its
+      promotion square. See §7.3.
+
+Death-square status of the four squares in each home row, BEFORE poisoning:
+  home_row(BLACK) = {a1, c1, e1, g1}
+    a1: White's promotion square  — not a static death square
+    c1, e1, g1: White's death squares — death
+  home_row(WHITE) = {b8, d8, f8, h8}
+    h8: Black's promotion square  — not a static death square
+    b8, d8, f8: Black's death squares — death
+After poisoned[BLACK] = True, ALL of {a1,c1,e1,g1} are death.
+After poisoned[WHITE] = True, ALL of {b8,d8,f8,h8} are death.
+
+--------------------------------------------------------------------------------
+7. PROMOTION AND POISONING
+--------------------------------------------------------------------------------
+
+R5.1  A MAN landing on promotion_square(owner) becomes a KING.
+R5.2  The promotion POISONS the side whose home row is on that rank:
+      when WHITE promotes, poisoned[BLACK] = True;
+      when BLACK promotes, poisoned[WHITE] = True.
+      ("The opponent of the promoter is poisoned.")
+R5.3  GRANDFATHERING: the promoted king is safe while standing on its
+      promotion square. Once it leaves, it may never return (the square
+      becomes death for everyone, including itself, from the moment of
+      poisoning). See §17 ambiguity A2 for when exactly the flag flips.
+R5.4  Poisoning is PER-SIDE and INDEPENDENT. Both sides can be poisoned.
+R5.5  Once a side's home row is poisoned, all four squares of that row
+      are PERMANENTLY death (the flag never flips back).
+
+Implications to test:
+  - After White promotes at a1: poisoned[BLACK] == True; all of
+    {a1,c1,e1,g1} are death squares; White's promoted king on a1 is
+    NOT removed by apply(); if it moves off a1, it cannot return.
+  - After Black promotes at h8: poisoned[WHITE] == True; all of
+    {b8,d8,f8,h8} are death squares; h8 grandfathering applies.
+
+--------------------------------------------------------------------------------
+8. FREEZING
+--------------------------------------------------------------------------------
+
+R6.1  A piece is FROZEN iff its only available capture is a single
+      (length-1) capture — i.e. a capture that would be legal in
+      traditional checkers but is illegal here.
+      Formally, for one piece p:
+        if captures_multi(p) is non-empty  -> NOT frozen
+        elif captures_single(p) is non-empty -> FROZEN
+        else -> NOT frozen
+R6.2  A frozen piece is IMMOBILE: it cannot move at all, cannot
+      voluntarily die. It is excluded from legal_moves.
+R6.3  MUTUAL FREEZE: two opposing pieces facing each other with empty
+      landing squares behind both freeze. (Classic case: each can only
+      single-capture the other.)
+R6.4  Freeze is computed PER TURN, BOARD-WIDE, from the current position.
+      Recompute at the start of every turn. Never cache across turns.
+R6.5  A frozen piece CAN be captured by a multi-capture and CAN be jumped
+      over (it acts as a wall for non-capture slides).
+R6.6  KINGS freeze too, at any distance (a king whose only capture is a
+      length-1 flying capture is frozen).
+R6.7  Freeze depends on both captures_multi and captures_single, so
+      freeze_map cannot be implemented before C12 and C13/C14 are done.
+      This is why freeze_map is C17, not earlier.
+
+freeze_map(board) -> dict[int, bool]:
+  For every occupied square, compute the boolean per R6.1. Return the
+  dict. Legal move generation (§9) reads it.
+
+--------------------------------------------------------------------------------
+9. TURN ORDER AND LEGALITY
+--------------------------------------------------------------------------------
+
+R7.1  At the start of every turn, in this exact order:
+        1. Compute freeze_map(board) for the current position (§8, R6.4).
+        2. Generate all multi-captures for NON-FROZEN pieces of the side
+           to move.
+        3. If any captures exist: filter to max length (R3.3). Return all
+           tied moves (R3.4).
+        4. Else: legal moves = quiet moves of NON-FROZEN pieces,
+           including voluntary death (R4.3).
+R7.2  If step 3 and step 4 both yield nothing, the side has no legal
+      moves; that is a draw (§10, R8.2).
+R7.3  Only the side to move is considered. The opponent's frozen pieces
+      are still walls (R6.5) and still capturable.
+
+Order of legality checks is fixed. Do not reorder for "efficiency".
+legal_moves(board) -> list[Move] is the single public entry point.
+
+--------------------------------------------------------------------------------
+10. WIN AND DRAW
+--------------------------------------------------------------------------------
+
+R8.1  WIN: the last player with any pieces on the board wins.
+      If exactly one side has zero pieces, the other side wins.
+R8.2  DRAW: legal_moves(board) == [] for the side to move.
+R8.3  PRECEDENCE: check win FIRST, draw SECOND. A position with zero
+      pieces for the side to move is a loss, not a draw. (Whether a
+      player can voluntarily suicide their last piece is ambiguity A6;
+      resolve it with a test either way.)
+
+rules.winner(board) -> Player | None
+rules.is_draw(board) -> bool
+
+--------------------------------------------------------------------------------
+11. API-READINESS CONSTRAINTS
+--------------------------------------------------------------------------------
+
+These are hard constraints on the engine. Violating one is a scope smell
+and blocks the commit.
+
+  - No engine module imports anything from FastAPI, httpx, sqlalchemy,
+    redis, pydantic, or any third-party library. stdlib + typing only.
+  - No I/O in library code: no print(), no logging side-effects, no
+    file writes. Use exceptions for errors, return values for state.
+  - No module-level MUTABLE state. Board is the single source of truth.
+    Every function that mutates takes a Board and mutates it explicitly.
+  - All public functions are fully typed. mypy strict = true must pass
+    for engine/. (Tests may be looser.)
+  - Every public function has a docstring stating what it returns and
+    citing the rule it implements, e.g. "Implements R3.5 (death
+    truncation)."
+  - Errors are explicit: raise ValueError with a clear message rather
+    than silently returning an empty list or a sentinel.
+  - Move and Board must be JSON-serializable (§13).
+
+--------------------------------------------------------------------------------
+12. DATA MODEL
+--------------------------------------------------------------------------------
+
+Player: an enum or str-like constant, values "WHITE" and "BLACK".
+        Must serialize to a JSON-safe value.
+Kind:   an enum or str-like constant, values "MAN" and "KING".
+
+Piece:  dataclass. Fields: player (Player), kind (Kind). Frozen/poisoned
+        are NOT on the piece — they are board state.
+
+Board:  dataclass.
+          squares:  list[Piece | None]  of length 64, indexed by square
+          turn:     Player
+          poisoned: dict[Player, bool]
+          history:  list  (for undo; internal, not required to serialize)
+        Methods (at minimum):
+          setup() -> Board               classmethod, standard start
+          piece_at(sq) -> Piece | None
+          pieces(player) -> list[int]    (squares)
+          apply(move) -> None            mutate + push history + flip turn
+          undo() -> None                 pop history, reverse exactly
+          to_dict() / from_dict()        §13
+
+Move:   dataclass in notation.py.
+          from_sq:   int
+          to_sq:     int
+          captures:  list[int]   squares of captured pieces, in capture order
+          dies:      bool        True iff the final landing kills the mover
+        Property:
+          length -> int          == len(self.captures)
+        Methods:
+          to_dict() / from_dict()   §13
+
+Freeze map: dict[int, bool] keyed by occupied square.
+
+--------------------------------------------------------------------------------
+13. SERIALIZATION SCHEMAS
+--------------------------------------------------------------------------------
+
+Move.to_dict() -> JSON-safe dict:
+  {
+    "from_sq":  int,
+    "to_sq":    int,
+    "captures": [int, ...],
+    "dies":     bool
+  }
+Move.from_dict(d) -> Move  reconstructs exactly (roundtrip is a test).
+
+Board.to_dict() -> JSON-safe dict:
+  {
+    "squares": [
+      null | {"player": "WHITE"|"BLACK", "kind": "MAN"|"KING"},
+      ... 64 entries, index = square ...
+    ],
+    "turn": "WHITE"|"BLACK",
+    "poisoned": {"WHITE": bool, "BLACK": bool}
+  }
+Board.from_dict(d) -> Board. History may be empty on reconstruction;
+equivalence is defined on squares, turn, poisoned.
+
+Roundtrip test required: from_dict(to_dict(b)) has an identical board
+per above. This is what will land in Postgres/Redis later; get it right
+now.
+
+--------------------------------------------------------------------------------
+14. ERROR HANDLING POLICY
+--------------------------------------------------------------------------------
+
+  - Constructing a Move with out-of-range squares, or from_sq == to_sq,
+    raises ValueError.
+  - apply(move) where move is not legal for the current board raises
+    ValueError with a message naming the violated rule.
+    Exception: during development, you MAY temporarily skip the legality
+    check to write apply() in isolation (C03-C06). By C19 the check must
+    be in place. Document any temporary relaxation in a comment and
+    remove it before the C19 commit.
+  - undo() on an empty history raises IndexError (or ValueError; pick
+    one and test it).
+  - Never return [] to signal "illegal"; raise.
+
+--------------------------------------------------------------------------------
+15. TESTING PHILOSOPHY
+--------------------------------------------------------------------------------
+
+  - Tests are written by the implementer (the human), not the tutor.
+  - Test names describe the RULE, not the function. Examples:
+        test_man_cannot_move_backward
+        test_single_capture_is_illegal
+        test_max_capture_rule_filters_shorter_sequences
+        test_promotion_poisons_opponent_home_row
+        test_frozen_piece_excluded_from_legal_moves
+        test_mutual_freeze_freezes_both_pieces
+    Not: test_man_quiet_moves_2, test_legal_moves_works.
+  - For EVERY rule in §4-§10, at least one positive test and one negative
+    test must exist before the corresponding commit is accepted.
+  - pytest, pytest-cov, hypothesis. No time.sleep. No network.
+  - Fuzz tests (C23) come LAST. Fuzz without unit tests measures entropy.
+  - Use fixtures and parametrize freely. Construct boards from explicit
+    square sets, not from playouts, for unit tests.
+
+--------------------------------------------------------------------------------
+16. COMMIT PLAN C00-C24
+--------------------------------------------------------------------------------
+
+Each commit must:
+  (a) keep all tests green,
+  (b) touch only the files it says,
+  (c) have a message that says what the change ENABLES (and cites rule
+      IDs where relevant), not "update file".
+You may not start commit N+1 until N is committed and you can explain it.
+
+C00  PRE-FLIGHT (no code change)
+     Walk the tutor through engine/geometry.py line by line. Prove you
+     understand it without notes. Acceptance: you can explain why each
+     helper exists and what breaks if its indexing changes.
+
+C01  BOARD SKELETON
+     Piece dataclass; Board dataclass with squares (list[Piece|None],
+     64), turn, poisoned dict, history list. setup() produces the
+     standard start. piece_at(sq), pieces(player).
+     Tests: 12 pieces per side; correct dark squares; correct starting
+     rows; pieces() returns the exact square sets in §3.9.
+     Rules: R1.1, R1.2, R1.3.
+
+C02  MOVE DATACLASS (notation.py)
+     Move with from_sq, to_sq, captures (list[int]), dies (bool);
+     length property; to_dict/from_dict.
+     Tests: roundtrip serialization; length property; dies preserved.
+     Rules: R3.3 (length definition), §13.
+
+C03  board.apply / board.undo FOR QUIET NON-CAPTURES
+     Move a piece; flip turn; push to history. Undo reverses exactly.
+     Tests: apply then undo restores a byte-identical board; turn flips.
+     Rules: R2.1, R2.3, R7 (turn flip).
+
+C04  board.apply HANDLES VOLUNTARY DEATH
+     Landing on a death square removes the piece (still flips turn, still
+     undoable). May temporarily use a hard-coded "is this a death
+     square?" helper; C05 replaces it.
+     Tests: piece vanishes; turn flips; undo restores.
+     Rules: R4.1, R4.3.
+
+C05  board.is_death_square
+     Static death OR (poisoned[side] AND sq in home_row(side)). Single
+     source of truth for death (R4.5). Refactor C04 to call it.
+     Tests: static death squares detected; unpoisoned home rows safe;
+     flipping poisoned[side] makes the whole row death; the §3.7
+     identity death_squares(p) | {promotion_square(p)} == home_row(other)
+     holds.
+     Rules: R3.7, R4.5.
+
+C06  board.apply HANDLES CAPTURES
+     Remove captured pieces; move the piece; push history; flip turn.
+     Tests: apply/undo with captures; captured pieces come back on undo
+     in the right kinds/players.
+     Rules: R3, R4.2 (death is not a capture).
+
+C07  board.apply HANDLES PROMOTION
+     A man landing on promotion_square(owner) becomes KING.
+     Tests: man -> king on landing; undo restores MAN.
+     Rules: R5.1.
+
+C08  board.apply HANDLES POISON FLIP ON PROMOTION
+     On promotion, flip poisoned[opponent_of_promoter] = True. The
+     promoted king is NOT removed by apply (grandfathering lives in move
+     generation, not apply).
+     Tests: after White promotes, Black is poisoned and Black's whole
+     home_row is death; the promoted king on its promotion square is
+     untouched; undo restores poisoned to its previous value.
+     Rules: R5.2, R5.4, R5.5. (R5.3 is tested in C11/C18.)
+
+C09  man_quiet_moves (no suicide yet)
+     One file per piece type (suggest moves.py). Forward only; blocked
+     by anything; off-board blocked.
+     Tests: correct forward direction per colour; no backward moves;
+     blocked-by-piece; blocked-by-edge.
+     Rules: R2.1, R2.5, R2.6.
+
+C10  man_quiet_moves: VOLUNTARY DEATH
+     A forward move landing on a death square is legal and sets
+     dies=True.
+     Tests: death move generated; dies=True; life moves have dies=False.
+     Rules: R4.3, R4.4 (frozen exclusion is applied later, in C17-C19).
+
+C11  king_quiet_moves: SLIDING, SUICIDE ALLOWED
+     Fly all four directions until blocked or edge; every empty square
+     along the ray is a legal landing. Landing on a death square is
+     legal and dies=True. The grandfathered king on its promotion square
+     may move away (and thus lose grandfathering).
+     Tests: long slides; stops at first blocker; no flying through
+     pieces; suicide king allowed; grandfathered king may leave.
+     Rules: R2.3, R2.4, R4.3, R5.3.
+
+C12  captures_single (DETECTION ONLY, NEVER RETURNED AS A LEGAL MOVE)
+     Returns length-1 captures for ONE piece. Used later by freeze_map
+     (R6.1). Detects in all four directions for men and kings.
+     Tests: detects a single-capture opportunity in each direction;
+     detects king single-captures at range; a square with no single
+     capture returns [].
+     Rules: R3.1, R3.6, R6.1.
+
+C13  captures_multi: RECURSION (no death truncation yet)
+     Returns ALL multi-capture sequences (length >= 2) for ONE piece.
+     No death handling, no promotion-during-sequence handling. Track
+     captured squares so nothing is captured twice and no square is
+     revisited. Resolve ambiguity A5 (captured pieces as blockers)
+     BEFORE this commit and lock it with a test.
+     Tests: simple double capture; two branching options both returned;
+     captured squares never duplicated; no square revisited.
+     Rules: R3.3, R3.6, R3.7.
+
+C14  captures_multi: DEATH TRUNCATION
+     A sequence landing on a death square ends there. Pieces captured
+     before the dying landing still count for length. dies=True on the
+     resulting Move.
+     Tests: sequence dies at step 2 of 3; length counts the 2 already
+     captured; dies=True; no further extension is generated.
+     Rules: R3.5, R4.1.
+
+C15  captures_multi: KING MULTI-CAPTURE (FLYING)
+     King slides, captures the first piece on the ray, lands past it
+     (see ambiguity A4), continues. Cannot capture through a second
+     piece.
+     Tests: king double capture at distance; king cannot capture
+     through a second piece; landing options obey A4.
+     Rules: R2.4, R3.6.
+
+C16  captures_multi: PROMOTION MID-SEQUENCE
+     Depends on decision A1. Whatever the choice: implement it, comment
+     it, test it.
+     Tests: lock the decision in (one positive, one negative).
+     Rules: R5.1.
+
+C17  freeze_map
+     Per R6.1: if captures_multi non-empty -> not frozen; elif
+     captures_single non-empty -> FROZEN; else not frozen. Return
+     dict[square, bool].
+     Tests: isolated piece not frozen; piece whose only capture is
+     length 1 is frozen; mutual freeze; frozen king at range.
+     Rules: R6.1-R6.6.
+
+C18  legal_moves: QUIET FALLBACK PATH
+     When no captures exist, return quiet moves for non-frozen pieces.
+     Tests: frozen pieces excluded; quiet moves from several pieces
+     merged; voluntary-death moves included; all-dies -> not empty.
+     Rules: R7.1 step 4, R6.2, R4.3.
+
+C19  legal_moves: CAPTURE PATH WITH MAX FILTER
+     Generate captures for non-frozen pieces; if any, return only max
+     length; ties all returned; frozen pieces never appear. Remove any
+     temporary legality bypass from C03-C06.
+     Tests: forced max; ties; frozen pieces excluded from capture list;
+     apply() rejects an illegal move with ValueError.
+     Rules: R3.2, R3.3, R3.4, R3.8, R7.1 steps 2-3, §14.
+
+C20  rules.winner
+     Last player with any piece on the board.
+     Tests: one side empty -> other wins; both non-empty -> None.
+     Rules: R8.1, R8.3.
+
+C21  rules.is_draw
+     legal_moves(board) == [].
+     Tests: no legal moves -> True; at least one -> False. Test win/draw
+     precedence (R8.3).
+     Rules: R8.2, R8.3.
+
+C22  GOLDEN GAME (REPL demo, recorded as a test)
+     Play one full game by hand in the REPL. Save the move list as a
+     fixture. Test replays it and asserts the final board and winner.
+     This is the regression net.
+     Acceptance: the game reaches a win, a draw, a promotion, a poison
+     flip, a freeze, and a voluntary death (can be across several short
+     fixtures if one game cannot exercise all).
+
+C23  HYPOTHESIS FUZZ SUITE
+     Property tests on random playouts:
+       - piece count never increases
+       - apply(move) then undo() == identical board
+       - no legal move leaves a piece alive on a death square
+       - no frozen piece appears in legal_moves output
+       - each returned move is legal under a SECOND, independently
+         written checker
+     Thousands of cases. Slow is fine.
+     Rules: all of §4-§10.
+
+C24  COVERAGE AND CLEANUP
+     pytest --cov=engine reports >= 80%. ruff and mypy strict clean.
+     Every public function has a docstring citing a rule. README has a
+     10-line usage example and links to test_geometry.py.
+     Commit. Engine phase done.
+
+COMMIT MESSAGE STYLE
+  Good:  "captures_multi: end sequence on death landing so max-length
+          accounting matches R3.5."
+  Bad:   "fix", "wip", "update moves.py".
+  The tutor will reject vague messages.
+
+--------------------------------------------------------------------------------
+17. AMBIGUITIES TO RESOLVE AND LOCK (DECISION LOG)
+--------------------------------------------------------------------------------
+
+These are NOT decided by the spec. You must decide, document the decision
+in a code comment at the implementation site, and add a test that locks
+it in. Record your choice and date in this section as you go. Do not
+proceed past the listed commit until the ambiguity is resolved.
+
+A1  PROMOTION MID-SEQUENCE (resolve before C16)
+    Can a capture sequence that promotes a man mid-sequence continue as
+    a king?
+      Option A: move ends at promotion (standard checkers).
+      Option B: sequence continues with the king.
+    Decision: ____________________   Date: __________   Test: __________
+
+A2  POISON FLIP TIMING (resolve before C08/C16)
+    Does promoting mid-capture flip the poison flag immediately
+    (affecting the rest of the same sequence) or at the end of the move?
+      Option A: immediately.
+      Option B: at end of move.
+    Decision: ____________________   Date: __________   Test: __________
+
+A3  PROMOTION SQUARE AS DEATH FOR NON-OWNER (resolve before C05)
+    Before a side is poisoned, is a1 a death square for a BLACK piece?
+    Is h8 a death square for a WHITE piece? (The §3.7 exclusion is
+    motivated by grandfathering, not by ownership.)
+      Option A: no — promotion squares are not death until poisoned.
+      Option B: yes — "death is neutral" implies the union is death.
+    Decision: ____________________   Date: __________   Test: __________
+
+A4  FLYING KING CAPTURE LANDING (resolve before C15)
+    After a flying king captures the first piece on a ray, where may it
+    land?
+      Option A: only the square immediately beyond the captured piece.
+      Option B: any empty square beyond it on the same ray, before the
+                next blocker or edge.
+    Decision: ____________________   Date: __________   Test: __________
+
+A5  CAPTURED PIECES DURING A SEQUENCE (resolve before C13)
+    During a multi-capture, are already-captured pieces removed
+    immediately (squares become empty) or do they remain as blockers
+    until the move ends?
+      Option A: removed immediately (squares traversable).
+      Option B: remain as blockers; only the final removal happens at
+                move end.
+      Option C: removed immediately for capture/landing purposes but
+                still block sliding through (hybrid).
+    Decision: ____________________   Date: __________   Test: __________
+
+A6  VOLUNTARY SUICIDE OF LAST PIECE (resolve before C20/C21)
+    May a player voluntarily kill their last piece (resulting in an
+    immediate loss)? Or is that move illegal / filtered out?
+      Option A: legal; the player loses.
+      Option B: filtered from legal_moves when it would empty the board.
+    Decision: ____________________   Date: __________   Test: __________
+
+A7  DEATH OF LAST PIECE BY CAPTURE TRUNCATION (resolve before C14)
+    If a capture sequence ends by dying on a death square, and the
+    mover's only remaining piece was the one that died, the mover has
+    zero pieces. This is a loss (R8.1) regardless of how the dying
+    occurred. Confirm this is handled: legal_moves returned the move,
+    apply() executed it, winner() reports the opponent. Add a test.
+    Decision: ____________________   Date: __________   Test: __________
+
+--------------------------------------------------------------------------------
+18. DEFINITION OF DONE - CHUNK 1
+--------------------------------------------------------------------------------
+
+The engine is done when ALL of the following hold, verified by the tutor:
+  [ ] All commits C01-C23 are committed on main.
+  [ ] pytest is green.
+  [ ] Coverage >= 80% on engine/.
+  [ ] mypy strict is clean on engine/.
+  [ ] ruff check and ruff format --check are clean on engine/ and tests/.
+  [ ] The implementer can play a full game in a REPL by hand, reaching a
+      win, a draw, a promotion, a poison flip, a freeze, and a voluntary
+      death.
+  [ ] The implementer can explain every public function in the engine
+      without re-reading it first.
+  [ ] README has a 10-line usage example and a link to test_geometry.py.
+
+Only then does the project move to Chunk 2 (FastAPI wrapper). Chunk 2
+happens in a fresh chat with a different prompt. Do not start it here.
+
+--------------------------------------------------------------------------------
+19. OUT OF SCOPE (REDIRECT EVERY TIME)
+--------------------------------------------------------------------------------
+  - FastAPI, routes, Pydantic schemas
+  - PostgreSQL, SQLAlchemy, Alembic, Redis
+  - JWT auth, password hashing, users
+  - AI / minimax / evaluation
+  - Docker, CI, deployment
+  - Frontend, WebSocket, React, HTMX
+  - py-draughts, python-chess, numpy, bitboards, transposition tables
+  - Multi-variant support, opening books, endgame tablebases
+  - CLI, REPL helpers, GUI
+
+Allowed tooling (outside engine code, zero runtime dependencies):
+  - uv (env + packaging), ruff, mypy, pytest, pytest-cov, hypothesis,
+    pre-commit. These may be set up in a separate session; they must not
+    introduce runtime deps into the library.
+
+--------------------------------------------------------------------------------
+20. SESSION PROTOCOL WITH THE TUTOR
+--------------------------------------------------------------------------------
+
+Open each work session with:
+  "Working on commit C0X. Here is engine/foo.py. Here is my test output."
+
+The tutor will respond with:
+  1. The acceptance criterion for that commit (1 line).
+  2. What is correct (short).
+  3. What is wrong or unproven, each with a question or a spec reference
+     — never a fix.
+  4. One closing question: "What will you change first?"
+
+When the tutor says the commit is done:
+  - run pytest one more time,
+  - write the commit message yourself (the tutor critiques it),
+  - commit,
+  - announce the next commit.
+
+If you are stuck, the tutor will first ask:
+  - "What have you tried?"
+  - "What does the failing test say, verbatim?"
+  - "What did you expect, verbatim?"
+Answer all three before asking for a hint. If you cannot answer them,
+add a print / minimal reproducer and come back.
+
+If you are tired: commit what is green, stop, resume at the recorded
+commit. Do not push through a hard commit in a tired state.
+
+--------------------------------------------------------------------------------
+21. APPENDIX: SQUARE INDEX MAP AND WORKED POSITIONS
+--------------------------------------------------------------------------------
+
+21.1 SQUARE INDEX MAP (sq = rank*8 + file)
+        a    b    c    d    e    f    g    h
+   8   56   57   58   59   60   61   62   63
+   7   48   49   50   51   52   53   54   55
+   6   40   41   42   43   44   45   46   47
+   5   32   33   34   35   36   37   38   39
+   4   24   25   26   27   28   29   30   31
+   3   16   17   18   19   20   21   22   23
+   2    8    9   10   11   12   13   14   15
+   1    0    1    2    3    4    5    6    7
+
+21.2 PLAYABLE (DARK) SQUARES BY RANK — (file+rank) even
+   rank 1 (r=0):  a1=0   c1=2   e1=4   g1=6
+   rank 2 (r=1):  b2=9   d2=11  f2=13  h2=15
+   rank 3 (r=2):  a3=16  c3=18  e3=20  g3=22
+   rank 4 (r=3):  b4=25  d4=27  f4=29  h4=31
+   rank 5 (r=4):  a5=32  c5=34  e5=36  g5=38
+   rank 6 (r=5):  b6=41  d6=43  f6=45  h6=47
+   rank 7 (r=6):  a7=48  c7=50  e7=52  g7=54
+   rank 8 (r=7):  b8=57  d8=59  f8=61  h8=63
+
+21.3 STANDARD STARTING POSITION
+   WHITE (moves toward rank 0, promotes at a1=0):
+     {41, 43, 45, 47,  48, 50, 52, 54,  57, 59, 61, 63}
+   BLACK (moves toward rank 7, promotes at h8=63):
+     {0, 2, 4, 6,  9, 11, 13, 15,  16, 18, 20, 22}
+   Side to move at start: WHITE (record this decision in constants.py).
+   Note: WHITE starts on its own home row {57,59,61,63}; BLACK starts
+   on its own home row {0,2,4,6}.
+
+21.4 STATIC DEATH SQUARES IN THE STARTING POSITION
+   Death squares: {c1=2, e1=4, g1=6, b8=57, d8=59, f8=61}.
+   Note that in the starting position, c1/e1/g1 are occupied by BLACK
+   and b8/d8/f8 by WHITE — pieces there are NOT dying (death applies to
+   LANDING, not to occupancy). Do not implement "kill on death square
+   occupancy"; implement "kill on landing".
+
+21.5 GRANDFATHERING EXAMPLE (descriptive, not prescriptive)
+   White man at b6 (41) promotes at a1 (0). After the move:
+     - a1 holds a WHITE KING.
+     - poisoned[BLACK] == True.
+     - All of {0, 2, 4, 6} are death squares.
+     - The king on a1 is safe (grandfathered).
+     - If the king later moves to b2 (9), a1 becomes death for everyone,
+       including this king, forever.
+   Write the test for this before or during C08.
+
+21.6 MUTUAL FREEZE EXAMPLE (descriptive)
+   Two opposing men facing each other diagonally with an empty landing
+   square behind each: each can single-capture the other, and neither
+   has a multi-capture. Both are frozen per R6.1 and R6.3. Neither
+   appears in legal_moves. Build this position explicitly in the C17
+   test; do not derive it from a playout.
+
+--------------------------------------------------------------------------------
+END OF SPEC
+--------------------------------------------------------------------------------
