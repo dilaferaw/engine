@@ -96,6 +96,23 @@ uv run uvicorn engine.api:app --port 8000   # serves web/dist at /
 cd web && npm run dev         # Vite on :5173, proxies /games to :8000
 ```
 
+## Open question: sync or async storage
+
+`GameRepository` is currently synchronous and `GameRecord` holds a live
+`Board` object in memory. That is fine for `InMemoryGameStore`, but a real
+database backend has to pick a side, and the answer changes every route:
+
+- **Stay sync** — use a sync driver (e.g. `psycopg`) and implement the same
+  nine methods. Routes stay `def`, FastAPI runs them in a threadpool, and
+  `Board` is serialized to JSON on write / rebuilt on read. Least churn;
+  simplest to review.
+- **Go async** — change `GameRepository` to `async def`, switch routes to
+  `async def`, and use an async driver (`asyncpg` / SQLAlchemy async). Better
+  under load and for a serverless backend, but it touches every handler,
+  `translate()` and the tests.
+
+Decide before adding the first real backend; the two paths don't mix well.
+
 ## Known issues / next steps
 
 - `pytest` (no args) still fails collecting `deeps_tests/test_board.py`:
