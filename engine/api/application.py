@@ -1,0 +1,37 @@
+"""Application factory: storage, CORS, routes and the static SPA."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
+from engine.api.routes import router
+from engine.storage import GameRepository, InMemoryGameStore
+
+DEFAULT_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
+
+
+def create_app(
+    repository: GameRepository | None = None,
+    *,
+    serve_spa: bool = True,
+) -> FastAPI:
+    """Build the API, optionally with a custom repository and bundled SPA."""
+    app = FastAPI(title="Checkers Engine API", version="0.1.0")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(DEFAULT_ORIGINS),
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    app.state.repository = repository or InMemoryGameStore()
+    app.include_router(router)
+
+    dist = Path(__file__).resolve().parent.parent.parent / "web" / "dist"
+    if serve_spa and dist.is_dir():
+        app.mount("/", StaticFiles(directory=dist, html=True), name="web")
+
+    return app

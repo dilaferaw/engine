@@ -19,12 +19,32 @@ process memory and vanish when the server restarts.
 | `engine/moves.py` | Raw move generation (quiet, captures, multi-captures) |
 | `engine/notation.py` | `Move` dataclass + JSON round-trip |
 | `engine/rules.py` | `winner` / `is_draw` |
-| `engine/store.py` | `GameStore`, `GameRecord`: seats, names, history, rematch. **No HTTP.** |
-| `engine/api_schemas.py` | Pydantic wire models (`BoardModel`, `MoveModel`, ...) |
-| `engine/api.py` | Thin FastAPI routes; `translate()` maps store errors to status codes |
+### Storage (`engine/storage/`)
+| File | Responsibility |
+| --- | --- |
+| `storage/base.py` | `GameRepository` protocol — the contract every backend implements |
+| `storage/models.py` | `GameRecord` (seats, names, history, rematch), `color_for`, `clean_name` |
+| `storage/errors.py` | `StorageError`, `GameNotFound`, `GameFull`, `NotASeat`, `NotYourTurn` |
+| `storage/memory.py` | `InMemoryGameStore` — default backend |
 
-Status mapping lives in `STATUS_FOR` in `engine/api.py`. Add a new store
-exception there, don't sprinkle `HTTPException` through the store.
+### API (`engine/api/`)
+| File | Responsibility |
+| --- | --- |
+| `api/application.py` | `create_app(repository=..., serve_spa=...)` factory |
+| `api/routes.py` | Thin endpoints over `GameRepository`, all wrapped in `translate()` |
+| `api/schemas.py` | Pydantic wire models (`BoardModel`, `MoveModel`, ...) |
+| `api/deps.py` | `TokenHeader`, `NameHeader`, `Repository` dependency |
+| `api/errors.py` | `STATUS_FOR` + `translate()` mapping storage/engine errors to HTTP |
+| `api/__init__.py` | Exposes `app` and `create_app` for `uvicorn engine.api:app` |
+
+**Where to add things.** New persistence work (users, logs, game history)
+belongs in `engine/storage/`: extend `GameRepository`, add a SQL/remote backend
+next to `memory.py`, and select it in `create_app`. Routes must never import a
+concrete store — only `Repository`. New HTTP concerns (auth, pagination) go in
+`engine/api/deps.py` and `engine/api/errors.py`, not in the store.
+
+Status mapping lives in `STATUS_FOR` in `engine/api/errors.py`. Add a new
+storage exception there, don't sprinkle `HTTPException` through the store.
 
 ### Web (`web/`, React 19 + Tailwind v4 + Vite)
 | File | Responsibility |
@@ -81,8 +101,8 @@ cd web && npm run dev         # Vite on :5173, proxies /games to :8000
 - `pytest` (no args) still fails collecting `deeps_tests/test_board.py`:
   it imports `BM, BK, WM, WK` from `tests/helpers.py`, which no longer exports
   them. Pre-existing, unrelated to the web work. Running `pytest tests` is clean.
-- `engine/api.py` allows a move from an unseated token (spectator), which makes
-  it effectively a shared-seat game. Tighten if that's not wanted.
+- `InMemoryGameStore.play` allows a move from an unseated token (spectator),
+  which makes it effectively a shared-seat game. Tighten if that's not wanted.
 - No persistence: restarting uvicorn loses every game.
 - `GameScreen.tsx` still holds the layout markup (~200 lines); splitting the
   side panel out is the next natural cut.
@@ -90,6 +110,7 @@ cd web && npm run dev         # Vite on :5173, proxies /games to :8000
 
 ## Git
 
-Repo was initialised in this workspace (it did not exist before). Recent work:
-`7909f0b` per-tab names / copy feedback / hide invites → *this* commit: API and
-frontend refactor.
+Repo was initialised in this workspace (it did not exist before).
+`7909f0b` per-tab names / copy feedback / hide invites; `ecbeeaa` module split;
+this commit moves the API into `engine/api/` and persistence into
+`engine/storage/` behind a `GameRepository` protocol.
