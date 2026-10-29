@@ -26,6 +26,8 @@ body {
 .board-grid {
   display: grid;
   grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-rows: repeat(8, minmax(0, 1fr));
+  overflow: hidden;
   aspect-ratio: 1 / 1;
   border-radius: 8px;
   overflow: hidden;
@@ -39,6 +41,24 @@ body {
   border-radius: 9999px;
   transition: transform 120ms ease;
   will-change: transform;
+}
+
+/* Keeps any piece artwork inside its square regardless of intrinsic SVG size. */
+.piece-slot {
+  position: absolute;
+  inset: 6%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.piece-slot > svg,
+.piece-slot > img,
+.piece > svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .piece:hover {

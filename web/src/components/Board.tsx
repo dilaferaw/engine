@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { PieceArt, useTheme } from "../theme";
 import type { Color, Move, Piece } from "../types";
 
 interface Props {
@@ -26,40 +27,15 @@ function orderFor(color: Color | null): number[] {
   return out;
 }
 
+// Fixed square slot: keeps every piece, men and kings alike, the same size.
 function PieceGlyph({ piece }: { piece: Piece }) {
-  const white = piece.player === "WHITE";
-  const base = white ? "#f4f6f8" : "#262c33";
-  const edge = white ? "#9aa4ad" : "#0a0e12";
-  const crown = white ? "#c2812b" : "#f0b429";
+  const { pieceSet } = useTheme();
   return (
-    <div
-      className="piece relative flex h-[84%] w-[84%] items-center justify-center rounded-full"
-      style={{
-        background: `radial-gradient(circle at 34% 26%, #ffffffcc 0%, transparent 32%), radial-gradient(circle at 50% 58%, ${base}, ${edge})`,
-        boxShadow:
-          "0 1px 1px rgba(255,255,255,0.55) inset, 0 -3px 5px rgba(0,0,0,0.35) inset, 0 3px 4px rgba(0,0,0,0.45), 0 1px 0 rgba(0,0,0,0.5)",
-      }}
-    >
-      <span
-        className="pointer-events-none absolute inset-[14%] rounded-full border"
-        style={{ borderColor: white ? "#00000014" : "#ffffff1f" }}
-      />
-      {piece.kind === "KING" && (
-        <svg
-          viewBox="0 0 24 24"
-          className="h-[52%] w-[52%] drop-shadow"
-          fill="none"
-          stroke={crown}
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-        >
-          <path d="M3 8l4 3 5-6 5 6 4-3-2 10H5L3 8z" />
-          <path d="M6 21h12" />
-        </svg>
-      )}
-    </div>
+    <span className="piece-slot">
+      <span className="piece block h-full w-full">
+        <PieceArt color={piece.player} kind={piece.kind} set={pieceSet} />
+      </span>
+    </span>
   );
 }
 
@@ -73,6 +49,7 @@ export function Board({
   lastMove,
   onSquareClick,
 }: Props) {
+  const { board: theme } = useTheme();
   const order = useMemo(() => orderFor(yourColor), [yourColor]);
 
   const destinations = useMemo(() => {
@@ -110,7 +87,7 @@ export function Board({
             aria-label={`${FILES[f]}${r + 1}${piece ? ` ${piece.player} ${piece.kind}` : ""}`}
             onClick={() => onSquareClick(sq)}
             className="relative flex items-center justify-center"
-            style={{ background: dark ? "#769656" : "#eeeed2" }}
+            style={{ background: dark ? theme.dark : theme.light }}
           >
             {isLast && <span className="absolute inset-0 bg-yellow-300/30" />}
             {lastMove?.captures.includes(sq) && (

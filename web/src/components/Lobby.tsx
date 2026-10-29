@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
 import { api, getNickname, getToken, setNickname } from "../api";
+import {
+  BOARD_THEMES,
+  PIECE_SETS,
+  PieceArt,
+  useTheme,
+  type BoardThemeId,
+  type PieceSetId,
+} from "../theme";
 
 interface Props {
   onOpen: (gameId: string) => void;
@@ -134,6 +142,8 @@ export function Lobby({ onOpen }: Props) {
             {busy ? "Working…" : "Create game"}
           </button>
 
+          <Appearance />
+
           <div className="my-5 flex items-center gap-3 text-[11px] text-slate-600">
             <span className="h-px flex-1 bg-white/10" />
             or join with a link
@@ -187,6 +197,109 @@ export function Lobby({ onOpen }: Props) {
           </p>
         </section>
       </main>
+    </div>
+  );
+}
+
+const PIECE_SET_IDS = Object.keys(PIECE_SETS) as PieceSetId[];
+const BOARD_THEME_IDS = Object.keys(BOARD_THEMES) as BoardThemeId[];
+
+function Appearance() {
+  const { pieceSet, board, setPieceSet, setBoardTheme } = useTheme();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="mt-4 border-t border-white/5 pt-3">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between rounded-lg px-1 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400 transition hover:text-slate-200"
+      >
+        Appearance
+        <span className="text-slate-600">{open ? "−" : "+"}</span>
+      </button>
+
+      {open && (
+        <div className="pop-in mt-3 flex flex-col gap-4">
+          <div>
+            <p className="mb-2 text-[11px] font-medium text-slate-500">Board</p>
+            <div className="grid grid-cols-4 gap-2">
+              {BOARD_THEME_IDS.map((id) => {
+                const t = BOARD_THEMES[id];
+                const active = board.id === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setBoardTheme(id)}
+                    aria-pressed={active}
+                    aria-label={`${t.label} board`}
+                    className={`overflow-hidden rounded-lg border p-1 transition ${
+                      active
+                        ? "border-emerald-400/70 ring-2 ring-emerald-400/25"
+                        : "border-white/10 hover:border-white/25"
+                    }`}
+                  >
+                    <span className="grid aspect-square w-full grid-cols-4 overflow-hidden rounded-[3px]">
+                      {Array.from({ length: 16 }, (_, i) => {
+                        const file = i % 4;
+                        const rank = Math.floor(i / 4);
+                        return (
+                          <span
+                            key={i}
+                            style={{
+                              background:
+                                (file + rank) % 2 === 0 ? t.dark : t.light,
+                            }}
+                          />
+                        );
+                      })}
+                    </span>
+                    <span className="mt-1 block text-[10px] text-slate-400">
+                      {t.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-2 text-[11px] font-medium text-slate-500">Pieces</p>
+            <div className="grid grid-cols-4 gap-2">
+              {PIECE_SET_IDS.map((id) => {
+                const active = pieceSet === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setPieceSet(id)}
+                    aria-pressed={active}
+                    className={`flex flex-col items-center rounded-lg border px-1 py-1.5 transition ${
+                      active
+                        ? "border-emerald-400/70 ring-2 ring-emerald-400/25"
+                        : "border-white/10 hover:border-white/25"
+                    }`}
+                  >
+                    <span className="flex aspect-square w-full items-center justify-center gap-0.5 rounded-[3px] bg-slate-800/70 p-0.5">
+                      <span className="block h-full w-1/2">
+                        <PieceArt color="WHITE" kind="MAN" set={id} />
+                      </span>
+                      <span className="block h-full w-1/2">
+                        <PieceArt color="BLACK" kind="KING" set={id} />
+                      </span>
+                    </span>
+                    <span className="mt-1 text-[10px] text-slate-400">
+                      {PIECE_SETS[id].label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -51,6 +51,11 @@ export function GameScreen({ gameId, onLeave }: Props) {
   const startRef = useRef(Date.now());
   const prevCount = useRef<number | null>(null);
   const autoJoined = useRef(false);
+  const stateRef = useRef<GameState | null>(null);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,6 +66,16 @@ export function GameScreen({ gameId, onLeave }: Props) {
         const next = await api.getGame(gameId, ctrl.signal);
         if (cancelled) return;
         const prev = prevCount.current;
+        if (prev === next.move_count && stateRef.current) {
+          setState((cur) =>
+            cur && cur.your_color === next.your_color &&
+            cur.seats.WHITE === next.seats.WHITE &&
+            cur.seats.BLACK === next.seats.BLACK
+              ? cur
+              : next,
+          );
+          return;
+        }
         prevCount.current = next.move_count;
         if (prev !== null && next.move_count > prev) {
           if (next.winner || next.is_draw) cue("end");
