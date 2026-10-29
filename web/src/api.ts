@@ -18,12 +18,6 @@ export function getToken(): string {
   return token;
 }
 
-export function forceNewToken(): string {
-  const token = randomToken();
-  sessionStorage.setItem(TOKEN_KEY, token);
-  return token;
-}
-
 // The nickname is per-tab: two tabs in the same browser are two players, so
 // neither should inherit the other's name.
 export function getNickname(): string {
@@ -41,28 +35,6 @@ export function setNickname(name: string): void {
   sessionStorage.setItem(NAME_KEY, name.slice(0, 24));
 }
 
-export async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    const field = document.createElement("textarea");
-    field.value = text;
-    field.setAttribute("readonly", "");
-    field.style.position = "fixed";
-    field.style.opacity = "0";
-    document.body.appendChild(field);
-    field.select();
-    let ok = false;
-    try {
-      ok = document.execCommand("copy");
-    } catch {
-      ok = false;
-    }
-    field.remove();
-    return ok;
-  }
-}
 
 export class ApiError extends Error {
   status: number;

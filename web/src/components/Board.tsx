@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { FILES, orderFor } from "../lib/board";
 import { PieceArt, useTheme } from "../theme";
 import type { Color, Move, Piece } from "../types";
 
@@ -11,20 +12,6 @@ interface Props {
   selected: number | null;
   lastMove: Move | null;
   onSquareClick: (sq: number) => void;
-}
-
-const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
-
-// White pieces start on ranks 5-7 and Black on ranks 0-2, so the side to
-// move is drawn from the rank containing its own back row upward.
-function orderFor(color: Color | null): number[] {
-  const out: number[] = [];
-  if (color === "BLACK") {
-    for (let r = 7; r >= 0; r--) for (let f = 7; f >= 0; f--) out.push(r * 8 + f);
-  } else {
-    for (let r = 0; r < 8; r++) for (let f = 0; f < 8; f++) out.push(r * 8 + f);
-  }
-  return out;
 }
 
 // Fixed square slot: keeps every piece, men and kings alike, the same size.

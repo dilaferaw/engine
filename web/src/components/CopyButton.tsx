@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { copyText } from "../api";
+import { copyText } from "../lib/clipboard";
 
 interface Props {
   text: string;
