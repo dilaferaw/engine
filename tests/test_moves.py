@@ -1,4 +1,11 @@
-from engine.moves import captures_multi, captures_single, quiet_moves
+from engine.moves import (
+    capture_sequences,
+    captures_multi,
+    captures_single,
+    king_quiet_moves,
+    man_quiet_moves,
+    quiet_moves,
+)
 from engine.notation import Move
 from tests.helpers import make_board
 
@@ -59,6 +66,33 @@ def test_captured_piece_is_never_captured_twice() -> None:
     b = make_board(white_kings=[0], black=[27, 45])
     got = {(m.to_sq, tuple(m.captures)) for m in captures_multi(b, 0)}
     assert got == {(54, (27, 45)), (63, (27, 45))}
+
+
+def test_king_quiet_slides_all_directions() -> None:
+    b = make_board(white_kings=[27], black=[63])
+    # NE stops before 63, which holds the black man.
+    expected = {
+        36, 45, 54,
+        34, 41, 48,
+        20, 13, 6,
+        18, 9, 0,
+    }
+    assert {m.to_sq for m in king_quiet_moves(b, 27)} == expected
+
+
+def test_quiet_moves_dispatch_on_kind() -> None:
+    b = make_board(white=[27], white_kings=[36], black=[63])
+    assert quiet_moves(b, 27) == man_quiet_moves(b, 27)
+    assert quiet_moves(b, 36) == king_quiet_moves(b, 36)
+
+
+def test_captured_piece_still_blocks_king_return_slide() -> None:
+    # A5: the captured victim stays on the board until the sequence ends, so a
+    # king that captures at 45 cannot slide back through it to reach 27.
+    b = make_board(black_kings=[36], white=[45, 27])
+    via_45 = [m for m in capture_sequences(b, 36) if 45 in m.captures]
+    assert via_45, "king must be able to capture 45"
+    assert all(m.length == 1 for m in via_45)
 
 
 def test_capture_may_land_on_promotion_square() -> None:

@@ -1,3 +1,6 @@
+import random
+
+import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -25,6 +28,27 @@ def _independent_check(b: Board, m: Move) -> None:
     assert m.length == 0 or m.length >= 2
     if m.to_sq in STATIC_DEATH_SQUARES:
         assert m.dies
+
+
+@pytest.mark.parametrize("seed", [1, 7, 42, 1234])
+def test_poison_never_reverts_without_undo(seed: int) -> None:
+    rng = random.Random(seed)
+    board = Board.setup()
+    prev_poison = dict(board.poisoned)
+    for _ in range(60):
+        moves = legal_moves(board)
+        if not moves or winner(board) is not None:
+            break
+        before = board.to_dict()
+        move = rng.choice(moves)
+        board.apply(move)
+        board.undo()
+        assert board.to_dict() == before
+        board.apply(move)
+        for side in Player:
+            if prev_poison[side]:
+                assert board.poisoned[side]
+        prev_poison = dict(board.poisoned)
 
 
 @settings(max_examples=200, deadline=None)

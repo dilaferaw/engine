@@ -31,6 +31,35 @@ def test_move_serialization_roundtrips() -> None:
     assert m.length == 2
 
 
+def test_copy_is_independent() -> None:
+    b = make_board(white=[9], black=[0], poisoned={Player.BLACK: True})
+    copy = b.copy()
+    copy.squares[0] = None
+    copy.poisoned[Player.BLACK] = False
+    assert b.piece_at(0) is not None
+    assert b.poisoned[Player.BLACK]
+
+
+def test_piece_at_rejects_off_board_squares() -> None:
+    b = Board.setup()
+    with pytest.raises(ValueError):
+        b.piece_at(-1)
+    with pytest.raises(ValueError):
+        b.piece_at(64)
+
+
+def test_board_rejects_wrong_square_count() -> None:
+    with pytest.raises(ValueError):
+        Board(squares=[None] * 63)
+
+
+def test_black_king_leaving_h8_poisons_white() -> None:
+    b = make_board(black_kings=[63], turn=Player.BLACK)
+    b.apply(Move(63, 54))
+    assert b.poisoned[Player.WHITE] is True
+    assert b.poisoned[Player.BLACK] is False
+
+
 def test_move_rejects_bad_squares() -> None:
     with pytest.raises(ValueError):
         Move(0, 64)
