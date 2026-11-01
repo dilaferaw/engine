@@ -32,7 +32,6 @@ export function useGame(gameId: string, onLeave: () => void): Game {
   const [state, setState] = useState<GameState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
-  const [lastMove, setLastMove] = useState<Move | null>(null);
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const startRef = useRef(Date.now());
@@ -103,6 +102,12 @@ export function useGame(gameId: string, onLeave: () => void): Game {
     };
   }, [gameId]);
 
+  // A declined rematch ends the game screen for both players: the one who
+  // clicked decline, and the one whose request was refused.
+  useEffect(() => {
+    if (state?.rematch_declined) onLeave();
+  }, [state?.rematch_declined, onLeave]);
+
   useEffect(() => {
     if (!state || autoJoined.current || state.your_color !== null) return;
     const free = [state.seats.WHITE, state.seats.BLACK].filter((s) => !s);
@@ -132,6 +137,16 @@ export function useGame(gameId: string, onLeave: () => void): Game {
   const yourColor = state?.your_color ?? null;
   const myTurn = state !== null && yourColor !== null && state.board.turn === yourColor;
 
+  // Highlight the opponent's latest move; your own move is already obvious
+  // from the piece you just touched.
+  const opponentColor =
+    yourColor === "BLACK" ? "WHITE" : yourColor === "WHITE" ? "BLACK" : null;
+  const lastMove =
+    state && opponentColor
+      ? ([...state.history].reverse().find((m) => m.player === opponentColor) ??
+        null)
+      : null;
+
   const act = async (fn: () => Promise<GameState>, failure: string) => {
     setBusy(true);
     setError(null);
@@ -160,7 +175,6 @@ export function useGame(gameId: string, onLeave: () => void): Game {
           .playMove(gameId, move)
           .then((next) => {
             setState(next);
-            setLastMove(move);
             setSelected(null);
           })
           .catch((e: unknown) => setError(message(e, "Move failed")))
@@ -187,13 +201,11 @@ export function useGame(gameId: string, onLeave: () => void): Game {
     select,
     undo: () => {
       setSelected(null);
-      setLastMove(null);
       void act(() => api.undo(gameId), "Undo failed");
     },
     join: () => void act(() => api.joinGame(gameId), "Could not join"),
     rematch: () => {
       setSelected(null);
-      setLastMove(null);
       void act(() => api.rematch(gameId), "Rematch failed");
     },
     declineRematch: () => {

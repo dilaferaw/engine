@@ -219,6 +219,23 @@ def test_decline_rematch_clears_only_the_decliners_request(client: TestClient) -
     assert cleared["rematch"] == {"WHITE": True, "BLACK": False}
 
 
+def test_declining_a_pending_rematch_flags_both_players(client: TestClient) -> None:
+    game_id = client.post("/games", headers={"X-Player-Token": "alice"}).json()[
+        "game_id"
+    ]
+    client.post(f"/games/{game_id}/join", headers={"X-Player-Token": "bob"})
+    asked = client.post(
+        f"/games/{game_id}/rematch", headers={"X-Player-Token": "alice"}
+    ).json()
+    assert asked["rematch_declined"] is False
+    client.post(
+        f"/games/{game_id}/rematch/decline", headers={"X-Player-Token": "bob"}
+    )
+    for token in ("alice", "bob"):
+        seen = client.get(f"/games/{game_id}", headers={"X-Player-Token": token})
+        assert seen.json()["rematch_declined"] is True
+
+
 def test_rematch_request_is_visible_to_the_opponent(client: TestClient) -> None:
     game_id = client.post("/games", headers={"X-Player-Token": "alice"}).json()[
         "game_id"

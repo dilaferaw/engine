@@ -93,6 +93,7 @@ class InMemoryGameStore:
         if color is None:
             raise NotASeat("not a player in this game")
         record.rematch[color] = True
+        record.rematch_declined = False
         if all(record.rematch.values()):
             record.reset()
         return self._changed(game_id, record)
@@ -103,6 +104,11 @@ class InMemoryGameStore:
         color = color_for(record.seats, token)
         if color is None:
             raise NotASeat("not a player in this game")
+        other = "BLACK" if color == "WHITE" else "WHITE"
+        if record.rematch[other]:
+            # The opponent asked and this player refused: both clients head
+            # back to the lobby.
+            record.rematch_declined = True
         record.rematch[color] = False
         return self._changed(game_id, record)
 

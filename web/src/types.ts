@@ -50,5 +50,6 @@ export interface GameState {
   move_count: number;
   game_over: boolean;
   rematch: Record<Color, boolean>;
+  rematch_declined: boolean;
   left: Record<Color, boolean>;
 }

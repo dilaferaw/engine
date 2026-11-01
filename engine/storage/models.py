@@ -58,6 +58,7 @@ class GameRecord:
     history: list[dict[str, Any]] = field(default_factory=list)
     rematch: dict[str, bool] = field(default_factory=fresh_rematch)
     left: dict[str, bool] = field(default_factory=fresh_left)
+    rematch_declined: bool = False
     forfeit: str | None = None
     version: int = 0
     _derived: tuple[int, list[Move], dict[int, bool]] | None = field(
@@ -76,6 +77,7 @@ class GameRecord:
         self.history = []
         self.rematch = fresh_rematch()
         self.left = fresh_left()
+        self.rematch_declined = False
         self.forfeit = None
         self.touch()
 
@@ -123,5 +125,6 @@ class GameRecord:
             "move_count": len(self.history),
             "game_over": result is not None or is_draw(self.board),
             "rematch": {color: self.rematch[color] for color in COLORS},
+            "rematch_declined": self.rematch_declined,
             "left": {color: self.left[color] for color in COLORS},
         }

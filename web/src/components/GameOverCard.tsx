@@ -91,7 +91,7 @@ export function GameOverCard({
                     : "Rematch"}
               </button>
               <button onClick={onDecline} disabled={busy} className="btn-subtle w-full">
-                Back to lobby
+                {opponentAsked ? "Decline rematch" : "Back to lobby"}
               </button>
             </>
           )}

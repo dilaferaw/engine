@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, getNickname, getToken, setNickname } from "../api";
+import { getNickname, getToken, setNickname } from "../api";
 import type { Lobby as LobbyState } from "../hooks/useLobby";
 import { CopyButton } from "./CopyButton";
 import {
@@ -26,9 +26,6 @@ function readRecent(): string[] {
 }
 
 export function Lobby({ onOpen, lobby }: Props) {
-  const [joinId, setJoinId] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [nickname, setNick] = useState(getNickname);
   const [recent, setRecent] = useState<string[]>(readRecent);
 
@@ -36,26 +33,11 @@ export function Lobby({ onOpen, lobby }: Props) {
     setNickname(nickname);
   }, [nickname]);
 
-  const remember = (id: string) => {
+  const open = (id: string) => {
     const next = [id, ...recent.filter((g) => g !== id)].slice(0, 6);
     setRecent(next);
     localStorage.setItem("checkers-games", JSON.stringify(next));
-  };
-
-  const join = async () => {
-    const id = joinId.trim().split(/[?#/]/).filter(Boolean).pop() ?? "";
-    if (!id) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await api.joinGame(id);
-      remember(id);
-      onOpen(id);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not join game");
-    } finally {
-      setBusy(false);
-    }
+    onOpen(id);
   };
 
   return (
@@ -139,40 +121,18 @@ export function Lobby({ onOpen, lobby }: Props) {
           ) : (
             <button
               onClick={lobby.create}
-              disabled={busy || lobby.busy}
+              disabled={lobby.busy}
               className="btn-primary mt-4 w-full disabled:opacity-50"
             >
-              {busy || lobby.busy ? "Working…" : "Create game"}
+              {lobby.busy ? "Working…" : "Create game"}
             </button>
           )}
 
           <Appearance />
 
-          <div className="my-5 flex items-center gap-3 text-[11px] text-slate-600">
-            <span className="h-px flex-1 bg-white/10" />
-            or join with a link
-            <span className="h-px flex-1 bg-white/10" />
-          </div>
-
-          <div className="flex gap-2">
-            <input
-              value={joinId}
-              onChange={(e) => setJoinId(e.target.value)}
-              placeholder="Paste invite link or game id"
-              className="min-w-0 flex-1 rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2.5 font-mono text-xs text-slate-100 outline-none transition placeholder:font-sans placeholder:text-slate-600 focus:border-emerald-400/60"
-            />
-            <button
-              onClick={() => void join()}
-              disabled={busy || !joinId.trim()}
-              className="btn-ghost px-4 disabled:opacity-40"
-            >
-              Join
-            </button>
-          </div>
-
-          {(error ?? lobby.error) && (
+          {lobby.error && (
             <p className="pop-in mt-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-              {error ?? lobby.error}
+              {lobby.error}
             </p>
           )}
 
@@ -219,7 +179,7 @@ export function Lobby({ onOpen, lobby }: Props) {
                 {recent.map((id) => (
                   <button
                     key={id}
-                    onClick={() => onOpen(id)}
+                    onClick={() => open(id)}
                     className="flex items-center justify-between rounded-md px-2 py-1.5 text-left font-mono text-xs text-slate-400 transition hover:bg-white/5 hover:text-slate-200"
                   >
                     {id.slice(0, 12)}
