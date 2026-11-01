@@ -115,9 +115,8 @@ Decide before adding the first real backend; the two paths don't mix well.
 
 ## Known issues / next steps
 
-- `pytest` (no args) still fails collecting `deeps_tests/test_board.py`:
-  it imports `BM, BK, WM, WK` from `tests/helpers.py`, which no longer exports
-  them. Pre-existing, unrelated to the web work. Running `pytest tests` is clean.
+- `deeps_tests/` was folded into `tests/` (its unique board/geometry/moves/
+  invariant cases now live there) and deleted; bare `pytest` collects cleanly.
 - `InMemoryGameStore.play` allows a move from an unseated token (spectator),
   which makes it effectively a shared-seat game. Tighten if that's not wanted.
 - No persistence: restarting uvicorn loses every game.
@@ -127,7 +126,30 @@ Decide before adding the first real backend; the two paths don't mix well.
 
 ## Git
 
-Repo was initialised in this workspace (it did not exist before).
-`7909f0b` per-tab names / copy feedback / hide invites; `ecbeeaa` module split;
-this commit moves the API into `engine/api/` and persistence into
-`engine/storage/` behind a `GameRepository` protocol.
+Repo was initialised in this workspace (it did not exist before), then pushed
+to **https://github.com/dilaferaw/engine** (public, branch `master`).
+
+- `origin` is set to that URL. **All commits were rewritten** to author and
+  committer `Dilaferaw <dilaferaw@gmail.com>` (earlier commits were made with
+  no git identity configured and landed as `dscli <dscli@localhost>`). Every
+  SHA changed in that rewrite, so old SHA references in notes or clones are
+  dead — re-clone or `git fetch && git reset --hard origin/master`.
+- Branch `pre-engine-skeleton` holds the original placeholder commit that was
+  on the remote before this codebase was force-pushed over `master`. The local
+  branch `backup/pre-rewrite-20261031032813` is a pre-rewrite safety copy; both
+  are disposable once you're confident.
+- A fresh clone needs `npm install` in `web/`: `web/node_modules` used to be
+  tracked and was untracked in "Stop tracking web/node_modules". `.gitignore`
+  now ignores `node_modules/` and `web/dist/`.
+
+### Checking it still works
+
+```sh
+git fetch origin --prune && git status --short --branch  # expect clean, no ahead/behind
+uv run pytest tests -q                                   # expect 63 passed
+cd web && npm run build                                  # tsc --noEmit + vite build
+```
+
+Last verified 2026-10-31: local `master` == `origin/master`, 63 tests pass
+(one Starlette `httpx` deprecation warning, harmless), frontend build clean.
+Commit the AGENT.md edits only when you intend to publish them.
