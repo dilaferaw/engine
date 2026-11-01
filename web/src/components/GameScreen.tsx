@@ -42,10 +42,13 @@ export function GameScreen({ gameId, onLeave }: Props) {
   const opponent: Color = yourColor === "BLACK" ? "WHITE" : "BLACK";
   const board = state.board;
 
+  const opponentLeft = yourColor !== null && state.left[opponent];
   const status = state.winner
-    ? state.winner === yourColor
-      ? "You won"
-      : "You lost"
+    ? opponentLeft
+      ? "Opponent left"
+      : state.winner === yourColor
+        ? "You won"
+        : "You lost"
     : state.is_draw
       ? "Draw"
       : yourColor === null
@@ -193,6 +196,7 @@ export function GameScreen({ gameId, onLeave }: Props) {
             <p>Captures are forced and longest-capture wins the choice.</p>
             <p className="mt-1">A piece whose only capture is length-1 is frozen (blue).</p>
             <p className="mt-1">Promotion poisons the opponent's home row.</p>
+            <p className="mt-1">No legal move on your turn, or leaving mid-game, loses.</p>
           </section>
         </aside>
       </div>

@@ -3,6 +3,9 @@ import { api } from "../api";
 import type { LobbyStatus } from "../types";
 
 const HEARTBEAT_MS = 5000;
+// Inside a game nobody needs an invite within a second; the presence TTL is
+// 15s, so 10s still keeps this tab visible and busy.
+const BUSY_HEARTBEAT_MS = 10000;
 const POLL_MS = 1500;
 const IDLE: LobbyStatus = { state: "idle", game_id: null, invites: [] };
 
@@ -30,7 +33,7 @@ export function useLobby(busy: boolean, onMatch: (gameId: string) => void): Lobb
   useEffect(() => {
     const beat = () => void api.heartbeat(busy).catch(() => undefined);
     beat();
-    const id = window.setInterval(beat, HEARTBEAT_MS);
+    const id = window.setInterval(beat, busy ? BUSY_HEARTBEAT_MS : HEARTBEAT_MS);
     return () => window.clearInterval(id);
   }, [busy]);
 

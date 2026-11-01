@@ -204,7 +204,7 @@ def test_rematch_requires_a_seat(client: TestClient) -> None:
     assert resp.status_code == 403
 
 
-def test_decline_rematch_clears_requests(client: TestClient) -> None:
+def test_decline_rematch_clears_only_the_decliners_request(client: TestClient) -> None:
     game_id = client.post(
         "/games", headers={"X-Player-Token": "alice"}
     ).json()["game_id"]
@@ -215,7 +215,48 @@ def test_decline_rematch_clears_requests(client: TestClient) -> None:
     cleared = client.post(
         f"/games/{game_id}/rematch/decline", headers={"X-Player-Token": "bob"}
     ).json()
-    assert cleared["rematch"] == {"WHITE": False, "BLACK": False}
+    # bob had nothing pending; alice's request must survive so the prompt works.
+    assert cleared["rematch"] == {"WHITE": True, "BLACK": False}
+
+
+def test_rematch_request_is_visible_to_the_opponent(client: TestClient) -> None:
+    game_id = client.post("/games", headers={"X-Player-Token": "alice"}).json()[
+        "game_id"
+    ]
+    client.post(f"/games/{game_id}/join", headers={"X-Player-Token": "bob"})
+    asked = client.post(
+        f"/games/{game_id}/rematch", headers={"X-Player-Token": "alice"}
+    ).json()
+    assert asked["rematch"]["WHITE"] is True
+    seen = client.get(f"/games/{game_id}", headers={"X-Player-Token": "bob"})
+    assert seen.json()["rematch"] == {"WHITE": True, "BLACK": False}
+
+
+def test_leaving_forfeits_a_running_game(client: TestClient) -> None:
+    game_id = client.post("/games", headers={"X-Player-Token": "alice"}).json()[
+        "game_id"
+    ]
+    client.post(f"/games/{game_id}/join", headers={"X-Player-Token": "bob"})
+    gone = client.post(
+        f"/games/{game_id}/leave", headers={"X-Player-Token": "bob"}
+    ).json()
+    assert gone["left"] == {"WHITE": False, "BLACK": True}
+    assert gone["winner"] == "WHITE"
+    assert gone["game_over"] is True
+    seen = client.get(f"/games/{game_id}", headers={"X-Player-Token": "alice"})
+    assert seen.json()["left"]["BLACK"] is True
+
+
+def test_leaving_does_not_change_a_finished_game(client: TestClient) -> None:
+    game_id = client.post("/games", headers={"X-Player-Token": "alice"}).json()[
+        "game_id"
+    ]
+    client.post(f"/games/{game_id}/join", headers={"X-Player-Token": "bob"})
+    client.post(f"/games/{game_id}/leave", headers={"X-Player-Token": "bob"})
+    again = client.post(
+        f"/games/{game_id}/leave", headers={"X-Player-Token": "alice"}
+    ).json()
+    assert again["winner"] == "WHITE"
 
 
 def test_forced_multi_capture_is_the_only_legal_move(client: TestClient) -> None:

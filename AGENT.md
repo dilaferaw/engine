@@ -2,6 +2,11 @@
 
 Read this first when picking the project up again.
 
+**Before you start, and before every commit:** read `AGENT_NOTE.md` (scratch
+notes, environment facts, traps) and write back anything new you learned — a
+dated line for each fact that cost you more than one turn, and delete entries
+that stopped being true. Commit that note update along with your change.
+
 ## What this is
 A pure-Python checkers engine for a **custom variant** (forced captures, frozen
 pieces, poisoned home rows, voluntary death — see `SPEC.txt`), plus a FastAPI

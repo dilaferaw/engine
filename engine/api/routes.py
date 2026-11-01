@@ -39,10 +39,21 @@ def list_games(repo: Repository) -> list[str]:
 
 @router.get("/games/{game_id}")
 def get_game(
-    repo: Repository, game_id: str, token: TokenHeader = None
+    repo: Repository,
+    game_id: str,
+    token: TokenHeader = None,
+    after: int | None = None,
 ) -> dict[str, Any]:
+    """Current state, or a tiny ``{"changed": false}`` when ``after`` is stale.
+
+    Polling clients send the ``version`` they already hold; an unchanged game
+    then costs a few bytes and no board/legal-move serialization.
+    """
     with translate():
-        return repo.require(game_id).state(game_id, token)
+        record = repo.require(game_id)
+        if after is not None and record.version == after:
+            return {"changed": False, "version": record.version}
+        return {"changed": True, **record.state(game_id, token)}
 
 
 @router.get("/games/{game_id}/moves")
@@ -99,7 +110,16 @@ def decline_rematch(
     repo: Repository, game_id: str, token: TokenHeader = None
 ) -> dict[str, Any]:
     with translate():
-        return repo.decline_rematch(game_id).state(game_id, token)
+        return repo.decline_rematch(game_id, token).state(game_id, token)
+
+
+@router.post("/games/{game_id}/leave")
+def leave_game(
+    repo: Repository, game_id: str, token: TokenHeader = None
+) -> dict[str, Any]:
+    """Give up this seat; the opponent wins if the game was still running."""
+    with translate():
+        return repo.leave(game_id, token).state(game_id, token)
 
 
 @router.delete("/games/{game_id}", status_code=204)

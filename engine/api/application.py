@@ -8,7 +8,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from engine.api.events import router as events_router
 from engine.api.lobby_routes import router as lobby_router
+from engine.api.realtime import Broadcaster
 from engine.api.routes import router
 from engine.matchmaking import LobbyService, LobbyStore, default_lobby_store
 from engine.storage import GameRepository, InMemoryGameStore
@@ -34,11 +36,16 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.state.repository = repository or InMemoryGameStore()
+    broadcaster = Broadcaster()
+    if repository is None:
+        repository = InMemoryGameStore(on_change=broadcaster.publish)
+    app.state.broadcaster = broadcaster
+    app.state.repository = repository
     app.state.lobby = LobbyService(
         app.state.repository, lobby_store or default_lobby_store()
     )
     app.include_router(router)
+    app.include_router(events_router)
     app.include_router(lobby_router)
 
     dist = Path(__file__).resolve().parent.parent.parent / "web" / "dist"

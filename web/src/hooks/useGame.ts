@@ -3,6 +3,10 @@ import { api, ApiError } from "../api";
 import { cue } from "../lib/sound";
 import type { GameState, Move } from "../types";
 
+// Reconnect backoff for the event stream: 0.3s, 0.6s, 1.2s ... capped at 5s.
+const FIRST_RETRY_MS = 300;
+const MAX_RETRY_MS = 5000;
+
 function message(e: unknown, fallback: string): string {
   return e instanceof ApiError ? e.message : fallback;
 }
@@ -40,50 +44,62 @@ export function useGame(gameId: string, onLeave: () => void): Game {
     stateRef.current = state;
   }, [state]);
 
+  const apply = (next: GameState) => {
+    const prev = prevCount.current;
+    prevCount.current = next.move_count;
+    if (prev !== null && next.move_count > prev) {
+      if (next.winner || next.is_draw) cue("end");
+      else if (next.your_color && next.board.turn === next.your_color)
+        cue(next.history.at(-1)?.captures.length ? "capture" : "move");
+    }
+    setState(next);
+    setError(null);
+  };
+
+  // One event stream per open game: the server pushes the state on every
+  // change, so an idle board costs one TCP connection and a keepalive frame.
   useEffect(() => {
     let cancelled = false;
-    const ctrl = new AbortController();
-    const tick = async () => {
-      if (document.hidden) return;
-      try {
-        const next = await api.getGame(gameId, ctrl.signal);
-        if (cancelled) return;
-        const prev = prevCount.current;
-        if (prev === next.move_count && stateRef.current) {
-          setState((cur) =>
-            cur &&
-            cur.your_color === next.your_color &&
-            cur.seats.WHITE === next.seats.WHITE &&
-            cur.seats.BLACK === next.seats.BLACK &&
-            cur.rematch.WHITE === next.rematch.WHITE &&
-            cur.rematch.BLACK === next.rematch.BLACK
-              ? cur
-              : next,
-          );
-          return;
-        }
-        prevCount.current = next.move_count;
-        if (prev !== null && next.move_count > prev) {
-          if (next.winner || next.is_draw) cue("end");
-          else if (next.your_color && next.board.turn === next.your_color)
-            cue(next.history.at(-1)?.captures.length ? "capture" : "move");
-        }
-        setState(next);
-        setError(null);
-      } catch (e) {
-        if (cancelled || (e instanceof DOMException && e.name === "AbortError"))
-          return;
-        setError(e instanceof Error ? e.message : "Failed to load game");
+    let retry = FIRST_RETRY_MS;
+    let timer = 0;
+    let ctrl = new AbortController();
+
+    const connect = () => {
+      ctrl = new AbortController();
+      api
+        .streamGame(gameId, apply, ctrl.signal)
+        .then(() => {
+          retry = FIRST_RETRY_MS;
+        })
+        .catch((e: unknown) => {
+          if (cancelled || (e instanceof DOMException && e.name === "AbortError"))
+            return;
+          retry = Math.min(retry * 2, MAX_RETRY_MS);
+          setError(e instanceof Error ? e.message : "Lost connection");
+        })
+        .finally(() => {
+          if (!cancelled) timer = window.setTimeout(connect, retry);
+        });
+    };
+
+    // A hidden tab cannot paint anyway; close the stream so the server does
+    // not hold a socket for nobody, and reconnect when it comes back.
+    const onVisibility = () => {
+      if (document.hidden) {
+        ctrl.abort();
+      } else {
+        window.clearTimeout(timer);
+        connect();
       }
     };
-    void tick();
-    const id = window.setInterval(() => void tick(), 600);
-    document.addEventListener("visibilitychange", tick);
+
+    connect();
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       cancelled = true;
       ctrl.abort();
-      window.clearInterval(id);
-      document.removeEventListener("visibilitychange", tick);
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [gameId]);
 
@@ -106,6 +122,13 @@ export function useGame(gameId: string, onLeave: () => void): Game {
     return () => window.clearInterval(id);
   }, []);
 
+  // Tell the server this seat is gone when the component unmounts (back to
+  // lobby, or the tab closed); the opponent then gets a forfeit instead of
+  // waiting forever. `keepalive` lets the request outlive the page.
+  useEffect(() => {
+    return () => api.leaveGameBeacon(gameId);
+  }, [gameId]);
+
   const yourColor = state?.your_color ?? null;
   const myTurn = state !== null && yourColor !== null && state.board.turn === yourColor;
 
@@ -113,7 +136,9 @@ export function useGame(gameId: string, onLeave: () => void): Game {
     setBusy(true);
     setError(null);
     try {
-      setState(await fn());
+      const next = await fn();
+      prevCount.current = next.move_count;
+      setState(next);
     } catch (e) {
       setError(message(e, failure));
     } finally {
@@ -122,7 +147,7 @@ export function useGame(gameId: string, onLeave: () => void): Game {
   };
 
   const select = (sq: number) => {
-    if (!state || busy) return;
+    if (!state || busy || state.game_over) return;
     const piece = state.board.squares[sq];
     if (selected !== null) {
       const move = state.legal_moves.find(

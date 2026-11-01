@@ -35,9 +35,11 @@ export function GameOverCard({
     : won
       ? "from-emerald-400/30 to-emerald-600/20 text-emerald-100"
       : "from-rose-500/25 to-rose-700/20 text-rose-100";
+  const opponent: Color = yourColor === "BLACK" ? "WHITE" : "BLACK";
+  const opponentLeft = yourColor !== null && state.left[opponent];
   const waiting = yourColor !== null && state.rematch[yourColor];
   const opponentAsked =
-    yourColor !== null && state.rematch[yourColor === "WHITE" ? "BLACK" : "WHITE"];
+    yourColor !== null && state.rematch[opponent];
 
   return (
     <div className="fixed inset-0 z-30 grid place-items-center bg-slate-950/70 p-4 backdrop-blur-sm">
@@ -55,18 +57,25 @@ export function GameOverCard({
             {headline}
           </h2>
           <p className="mt-1 text-xs opacity-80">
-            {draw
-              ? "Neither side could force a win."
-              : yourColor === null
-                ? "The game has been decided."
-                : won
-                  ? `You beat ${opponentName} in ${state.move_count} moves.`
-                  : `${opponentName} won in ${state.move_count} moves.`}
+            {opponentLeft
+              ? `${opponentName} left the game.`
+              : draw
+                ? "Neither side had a piece left."
+                : yourColor === null
+                  ? "The game has been decided."
+                  : won
+                    ? `You beat ${opponentName} in ${state.move_count} moves.`
+                    : `${opponentName} won in ${state.move_count} moves.`}
           </p>
         </div>
 
         <div className="flex flex-col gap-2 p-4">
-          {yourColor !== null && (
+          {yourColor !== null && opponentLeft && (
+            <button onClick={onDecline} disabled={busy} className="btn-primary w-full">
+              Back to lobby
+            </button>
+          )}
+          {yourColor !== null && !opponentLeft && (
             <>
               <button
                 onClick={onRematch}
@@ -91,7 +100,7 @@ export function GameOverCard({
               Back to lobby
             </button>
           )}
-          {yourColor !== null && opponentAsked && !waiting && (
+          {yourColor !== null && !opponentLeft && opponentAsked && !waiting && (
             <p className="text-center text-[11px] text-emerald-300">
               {opponentName} wants another game.
             </p>

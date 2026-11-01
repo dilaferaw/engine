@@ -6,6 +6,7 @@ from typing import Annotated, cast
 
 from fastapi import Depends, Header, Request
 
+from engine.api.realtime import Broadcaster as BroadcasterImpl
 from engine.matchmaking import LobbyService
 from engine.storage import GameRepository
 
@@ -32,3 +33,11 @@ def get_lobby(request: Request) -> LobbyService:
 
 
 Lobby = Annotated[LobbyService, Depends(get_lobby)]
+
+
+def get_broadcaster(request: Request) -> BroadcasterImpl:
+    """The change fan-out, set by ``create_app``."""
+    return cast(BroadcasterImpl, request.app.state.broadcaster)
+
+
+Broadcaster = Annotated[BroadcasterImpl, Depends(get_broadcaster)]

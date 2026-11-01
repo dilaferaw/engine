@@ -69,13 +69,62 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** Read `GET /games/{id}/events` until the stream ends or `signal` aborts. */
+async function streamGame(
+  id: string,
+  onState: (state: GameState) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const name = getNickname();
+  const res = await fetch(`/games/${id}/events`, {
+    signal,
+    headers: {
+      Accept: "text/event-stream",
+      "X-Player-Token": getToken(),
+      ...(name ? { "X-Player-Name": name } : {}),
+    },
+  });
+  if (!res.ok) throw new ApiError(res.status, res.statusText);
+  if (!res.body) throw new ApiError(res.status, "streaming unsupported");
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) return;
+    buffer += decoder.decode(value, { stream: true });
+    let split = buffer.indexOf("\n\n");
+    while (split >= 0) {
+      const frame = buffer.slice(0, split);
+      buffer = buffer.slice(split + 2);
+      for (const line of frame.split("\n")) {
+        if (!line.startsWith("data: ")) continue;
+        onState(JSON.parse(line.slice(6)) as GameState);
+      }
+      split = buffer.indexOf("\n\n");
+    }
+  }
+}
+
 export const api = {
+  streamGame,
   createGame: (): Promise<{ game_id: string }> =>
     request("/games", { method: "POST" }),
   joinGame: (id: string, signal?: AbortSignal): Promise<GameState> =>
     request(`/games/${id}/join`, { method: "POST", signal }),
-  getGame: (id: string, signal?: AbortSignal): Promise<GameState> =>
-    request(`/games/${id}`, { signal }),
+  // Returns null when the game has not changed since `version`, so an idle
+  // poll is a tiny response instead of a full 2 KB board.
+  getGame: (
+    id: string,
+    version: number | null = null,
+    signal?: AbortSignal,
+  ): Promise<GameState | null> => {
+    const query = version === null ? "" : `?after=${version}`;
+    return request<GameState | { changed: false; version: number }>(
+      `/games/${id}${query}`,
+      { signal },
+    ).then((body) => ("changed" in body && !body.changed ? null : (body as GameState)));
+  },
   playMove: (id: string, move: Move): Promise<GameState> =>
     request(`/games/${id}/moves`, { method: "POST", body: JSON.stringify(move) }),
   undo: (id: string): Promise<GameState> =>
@@ -84,6 +133,15 @@ export const api = {
     request(`/games/${id}/rematch`, { method: "POST" }),
   declineRematch: (id: string): Promise<GameState> =>
     request(`/games/${id}/rematch/decline`, { method: "POST" }),
+  leaveGame: (id: string): Promise<GameState> =>
+    request(`/games/${id}/leave`, { method: "POST" }),
+  // Leaving must not depend on the page staying alive.
+  leaveGameBeacon: (id: string): void => {
+    const name = getNickname();
+    const headers: Record<string, string> = { "X-Player-Token": getToken() };
+    if (name) headers["X-Player-Name"] = name;
+    void fetch(`/games/${id}/leave`, { method: "POST", headers, keepalive: true });
+  },
   heartbeat: (busy: boolean): Promise<void> =>
     request(`/lobby/heartbeat?busy=${busy}`, { method: "POST" }),
   lobbyStatus: (signal?: AbortSignal): Promise<LobbyStatus> =>

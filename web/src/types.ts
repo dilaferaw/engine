@@ -33,6 +33,7 @@ export interface LobbyStatus {
 
 export interface GameState {
   game_id: string;
+  version: number;
   board: {
     squares: (Piece | null)[];
     turn: Color;
@@ -49,4 +50,5 @@ export interface GameState {
   move_count: number;
   game_over: boolean;
   rematch: Record<Color, boolean>;
+  left: Record<Color, boolean>;
 }

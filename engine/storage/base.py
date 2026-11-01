@@ -41,8 +41,11 @@ class GameRepository(Protocol):
     def request_rematch(self, game_id: str, token: str | None) -> GameRecord:
         """Flag a seat ready; resets the game when both are ready."""
 
-    def decline_rematch(self, game_id: str) -> GameRecord:
-        """Clear both ready flags."""
+    def decline_rematch(self, game_id: str, token: str | None) -> GameRecord:
+        """Clear this player's ready flag; the other flag is left alone."""
+
+    def leave(self, game_id: str, token: str | None) -> GameRecord:
+        """Mark ``token``'s seat gone; forfeits an unfinished game to the other."""
 
     def delete(self, game_id: str) -> None:
         """Remove a game, or raise ``GameNotFound``."""

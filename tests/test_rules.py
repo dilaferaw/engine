@@ -10,8 +10,15 @@ def test_winner_is_last_side_with_pieces() -> None:
     assert winner(make_board(white=[27], black=[63])) is None
 
 
-def test_no_legal_moves_is_a_draw_when_both_sides_have_pieces() -> None:
-    assert is_draw(make_board(white=[27], black=[18]))
+def test_side_without_legal_moves_loses() -> None:
+    board = make_board(white=[27], black=[18])
+    assert legal_moves(board) == []
+    assert winner(board) is Player.BLACK
+    assert not is_draw(board)
+
+
+def test_stuck_black_on_its_turn_gives_white_the_win() -> None:
+    assert winner(make_board(white=[27], black=[18], turn=Player.BLACK)) is Player.WHITE
 
 
 def test_win_takes_precedence_over_draw() -> None:

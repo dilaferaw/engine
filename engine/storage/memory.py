@@ -2,19 +2,31 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from uuid import uuid4
 
 from engine.board import Board
 from engine.notation import Move
+from engine.rules import winner
 from engine.storage.errors import GameFull, GameNotFound, NotASeat, NotYourTurn
 from engine.storage.models import GameRecord, color_for, fresh_rematch
+
+ChangeListener = Callable[[str, int], None]
 
 
 class InMemoryGameStore:
     """Games held in a dict; lost when the process exits."""
 
-    def __init__(self) -> None:
+    def __init__(self, on_change: ChangeListener | None = None) -> None:
         self._games: dict[str, GameRecord] = {}
+        self.on_change = on_change
+
+    def _changed(self, game_id: str, record: GameRecord) -> GameRecord:
+        """Bump the version and tell any open event stream."""
+        record.touch()
+        if self.on_change is not None:
+            self.on_change(game_id, record.version)
+        return record
 
     def __len__(self) -> int:
         return len(self._games)
@@ -48,7 +60,12 @@ class InMemoryGameStore:
             if free is None:
                 raise GameFull("game is full")
             record.seats[free] = token
+            record.remember_name(token, name)
+            return self._changed(game_id, record)
+        before = record.names.get(color_for(record.seats, token) or "")
         record.remember_name(token, name)
+        if record.names.get(color_for(record.seats, token) or "") != before:
+            self._changed(game_id, record)
         return record
 
     def play(self, game_id: str, token: str | None, move: Move) -> GameRecord:
@@ -60,7 +77,7 @@ class InMemoryGameStore:
         played = move.to_dict()
         played["player"] = color
         record.history.append(played)
-        return record
+        return self._changed(game_id, record)
 
     def undo(self, game_id: str) -> GameRecord:
         record = self.require(game_id)
@@ -68,7 +85,7 @@ class InMemoryGameStore:
         if record.history:
             record.history.pop()
         record.rematch = fresh_rematch()
-        return record
+        return self._changed(game_id, record)
 
     def request_rematch(self, game_id: str, token: str | None) -> GameRecord:
         record = self.require(game_id)
@@ -78,12 +95,28 @@ class InMemoryGameStore:
         record.rematch[color] = True
         if all(record.rematch.values()):
             record.reset()
-        return record
+        return self._changed(game_id, record)
 
-    def decline_rematch(self, game_id: str) -> GameRecord:
+    def decline_rematch(self, game_id: str, token: str | None) -> GameRecord:
+        """Clear only this player's rematch flag; the other may still want one."""
         record = self.require(game_id)
-        record.rematch = fresh_rematch()
-        return record
+        color = color_for(record.seats, token)
+        if color is None:
+            raise NotASeat("not a player in this game")
+        record.rematch[color] = False
+        return self._changed(game_id, record)
+
+    def leave(self, game_id: str, token: str | None) -> GameRecord:
+        """Mark a seat gone; an unfinished game is forfeited to the other side."""
+        record = self.require(game_id)
+        color = color_for(record.seats, token)
+        if color is None or record.left[color]:
+            return record
+        record.left[color] = True
+        other_color = "BLACK" if color == "WHITE" else "WHITE"
+        if not record.left[other_color] and winner(record.board) is None:
+            record.forfeit = other_color
+        return self._changed(game_id, record)
 
     def delete(self, game_id: str) -> None:
         self.require(game_id)
