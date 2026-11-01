@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { GameScreen } from "./components/GameScreen";
 import { Lobby } from "./components/Lobby";
+import { useLobby } from "./hooks/useLobby";
 
 function gameIdFromHash(): string | null {
   const hash = window.location.hash.replace(/^#\/?/, "");
@@ -27,9 +28,11 @@ export default function App() {
     setGameId(null);
   }, []);
 
+  const lobby = useLobby(gameId !== null, open);
+
   return gameId ? (
     <GameScreen key={gameId} gameId={gameId} onLeave={leave} />
   ) : (
-    <Lobby onOpen={open} />
+    <Lobby onOpen={open} lobby={lobby} />
   );
 }

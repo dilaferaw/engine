@@ -51,8 +51,12 @@ line-length = 88
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
+[project.optional-dependencies]
+redis = ["redis>=5.0"]
+
 [dependency-groups]
 dev = [
+    "redis>=5.0",
     "hypothesis>=6.170.12",
     "mypy>=2.4.0",
     "pre-commit>=4.7.0",

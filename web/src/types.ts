@@ -17,6 +17,20 @@ export interface MoveRecord extends Move {
   player: Color | null;
 }
 
+export interface LobbyInvite {
+  invite_id: string;
+  from_token: string;
+  from_name: string | null;
+}
+
+export type LobbyState = "idle" | "waiting" | "invited" | "matched";
+
+export interface LobbyStatus {
+  state: LobbyState;
+  game_id: string | null;
+  invites: LobbyInvite[];
+}
+
 export interface GameState {
   game_id: string;
   board: {

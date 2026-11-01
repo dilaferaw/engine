@@ -1,4 +1,4 @@
-import type { GameState, Move } from "./types";
+import type { GameState, LobbyStatus, Move } from "./types";
 
 const TOKEN_KEY = "checkers-token";
 const NAME_KEY = "checkers-nickname";
@@ -84,4 +84,18 @@ export const api = {
     request(`/games/${id}/rematch`, { method: "POST" }),
   declineRematch: (id: string): Promise<GameState> =>
     request(`/games/${id}/rematch/decline`, { method: "POST" }),
+  heartbeat: (busy: boolean): Promise<void> =>
+    request(`/lobby/heartbeat?busy=${busy}`, { method: "POST" }),
+  lobbyStatus: (signal?: AbortSignal): Promise<LobbyStatus> =>
+    request("/lobby/status", { signal }),
+  createGameMatch: (): Promise<LobbyStatus> =>
+    request("/lobby/create", { method: "POST" }),
+  acceptInvite: (inviteId: string): Promise<LobbyStatus> =>
+    request(`/lobby/invites/${inviteId}/accept`, { method: "POST" }),
+  declineInvite: (inviteId: string): Promise<void> =>
+    request(`/lobby/invites/${inviteId}/decline`, { method: "POST" }),
+  cancelLobby: (): Promise<LobbyStatus> =>
+    request("/lobby/cancel", { method: "POST" }),
+  leaveLobby: (): Promise<void> =>
+    request("/lobby/leave", { method: "POST" }),
 };

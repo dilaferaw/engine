@@ -7,6 +7,7 @@ from contextlib import contextmanager
 
 from fastapi import HTTPException, status
 
+from engine.matchmaking import InviteGone
 from engine.storage import GameFull, GameNotFound, NotASeat, NotYourTurn
 
 STATUS_FOR: dict[type[Exception], int] = {
@@ -14,6 +15,7 @@ STATUS_FOR: dict[type[Exception], int] = {
     GameFull: status.HTTP_409_CONFLICT,
     NotASeat: status.HTTP_403_FORBIDDEN,
     NotYourTurn: status.HTTP_403_FORBIDDEN,
+    InviteGone: status.HTTP_410_GONE,
     IndexError: status.HTTP_409_CONFLICT,
     KeyError: status.HTTP_400_BAD_REQUEST,
     TypeError: status.HTTP_400_BAD_REQUEST,

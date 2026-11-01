@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, getNickname, getToken, setNickname } from "../api";
+import type { Lobby as LobbyState } from "../hooks/useLobby";
 import { CopyButton } from "./CopyButton";
 import {
   BOARD_THEMES,
@@ -12,6 +13,7 @@ import {
 
 interface Props {
   onOpen: (gameId: string) => void;
+  lobby: LobbyState;
 }
 
 function readRecent(): string[] {
@@ -23,7 +25,7 @@ function readRecent(): string[] {
   }
 }
 
-export function Lobby({ onOpen }: Props) {
+export function Lobby({ onOpen, lobby }: Props) {
   const [joinId, setJoinId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,20 +40,6 @@ export function Lobby({ onOpen }: Props) {
     const next = [id, ...recent.filter((g) => g !== id)].slice(0, 6);
     setRecent(next);
     localStorage.setItem("checkers-games", JSON.stringify(next));
-  };
-
-  const create = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const { game_id } = await api.createGame();
-      remember(game_id);
-      onOpen(game_id);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create game");
-    } finally {
-      setBusy(false);
-    }
   };
 
   const join = async () => {
@@ -135,13 +123,28 @@ export function Lobby({ onOpen }: Props) {
             className="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2.5 text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-emerald-400/60 focus:ring-2 focus:ring-emerald-400/20"
           />
 
-          <button
-            onClick={() => void create()}
-            disabled={busy}
-            className="btn-primary mt-4 w-full disabled:opacity-50"
-          >
-            {busy ? "Working…" : "Create game"}
-          </button>
+          {lobby.status.state === "waiting" ? (
+            <div className="mt-4 rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-3 py-3 text-sm text-emerald-100">
+              <p className="font-medium">Looking for an opponent…</p>
+              <p className="mt-0.5 text-xs text-emerald-200/70">
+                Available players are being asked to join you.
+              </p>
+              <button
+                onClick={lobby.cancel}
+                className="btn-ghost mt-2 w-full text-xs"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={lobby.create}
+              disabled={busy || lobby.busy}
+              className="btn-primary mt-4 w-full disabled:opacity-50"
+            >
+              {busy || lobby.busy ? "Working…" : "Create game"}
+            </button>
+          )}
 
           <Appearance />
 
@@ -167,10 +170,44 @@ export function Lobby({ onOpen }: Props) {
             </button>
           </div>
 
-          {error && (
+          {(error ?? lobby.error) && (
             <p className="pop-in mt-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-              {error}
+              {error ?? lobby.error}
             </p>
+          )}
+
+          {lobby.status.invites.length > 0 && (
+            <div className="pop-in mt-4 rounded-lg border border-sky-400/30 bg-sky-400/10 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-200/80">
+                Game invites
+              </p>
+              <ul className="mt-2 flex flex-col gap-2">
+                {lobby.status.invites.map((invite) => (
+                  <li
+                    key={invite.invite_id}
+                    className="flex items-center justify-between gap-2"
+                  >
+                    <span className="truncate text-sm text-slate-100">
+                      {invite.from_name ?? "A player"} wants to play
+                    </span>
+                    <span className="flex shrink-0 gap-1">
+                      <button
+                        onClick={() => lobby.accept(invite.invite_id)}
+                        className="btn-primary px-3 py-1 text-xs"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        onClick={() => lobby.decline(invite.invite_id)}
+                        className="btn-ghost px-3 py-1 text-xs"
+                      >
+                        Decline
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
           {recent.length > 0 && (

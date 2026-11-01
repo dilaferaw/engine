@@ -36,6 +36,17 @@ process memory and vanish when the server restarts.
 | `api/deps.py` | `TokenHeader`, `NameHeader`, `Repository` dependency |
 | `api/errors.py` | `STATUS_FOR` + `translate()` mapping storage/engine errors to HTTP |
 | `api/__init__.py` | Exposes `app` and `create_app` for `uvicorn engine.api:app` |
+| `api/lobby_routes.py` | `/lobby` endpoints (heartbeat, status, create, accept, decline) |
+| `api/lobby_schemas.py` | Wire models for lobby status and invites |
+### Matchmaking (`engine/matchmaking/`)
+| File | Responsibility |
+| --- | --- |
+| `store.py` | `LobbyStore` protocol + `MemoryLobbyStore`; presence/queue/invite/outcome state only |
+| `service.py` | **all** matchmaking rules (`LobbyService`) |
+| `redis_store.py` | Same contract on Redis for multi-worker deployments (`REDIS_URL`) |
+| `models.py`, `errors.py` | `Queued`, `Invite`, `Match`, `LobbyStatus`, `InviteGone` |
+
+See `MATCHMAKING.md` for how the flow and the Redis keys work.
 
 **Where to add things.** New persistence work (users, logs, game history)
 belongs in `engine/storage/`: extend `GameRepository`, add a SQL/remote backend
@@ -58,6 +69,7 @@ storage exception there, don't sprinkle `HTTPException` through the store.
 | `src/lib/sound.ts` | `cue()` WebAudio blips |
 | `src/lib/clipboard.ts` | `copyText()` with execCommand fallback |
 | `src/hooks/useGame.ts` | **all** game state: polling, auto-join, actions, sounds |
+| `src/hooks/useLobby.ts` | presence heartbeat, invite polling, redirect on match |
 | `src/components/GameScreen.tsx` | layout only; composes the hook + pieces below |
 | `src/components/Board.tsx` | grid, highlights, piece slots |
 | `src/components/PlayerCard.tsx` | name / connection / clock |
