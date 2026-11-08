@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getNickname, getToken, setNickname } from "../api";
 import type { Lobby as LobbyState } from "../hooks/useLobby";
 import { CopyButton } from "./CopyButton";
+import { RulesPanel } from "./RulesPanel";
 import {
   BOARD_THEMES,
   PIECE_SETS,
@@ -28,6 +29,7 @@ function readRecent(): string[] {
 export function Lobby({ onOpen, lobby }: Props) {
   const [nickname, setNick] = useState(getNickname);
   const [recent, setRecent] = useState<string[]>(readRecent);
+  const [tab, setTab] = useState<"play" | "rules">("play");
 
   useEffect(() => {
     setNickname(nickname);
@@ -54,7 +56,51 @@ export function Lobby({ onOpen, lobby }: Props) {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-10 px-5 py-10 lg:grid-cols-2 lg:py-20">
+      <main className="mx-auto max-w-6xl px-5 py-8 lg:py-12">
+        <div
+          role="tablist"
+          aria-label="Lobby sections"
+          className="mb-6 inline-flex gap-1 rounded-xl border border-white/10 bg-white/5 p-1"
+        >
+          {(
+            [
+              ["play", "Play"],
+              ["rules", "How to play"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              role="tab"
+              aria-selected={tab === id}
+              onClick={() => setTab(id)}
+              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${
+                tab === id
+                  ? "bg-emerald-500 text-emerald-950 shadow"
+                  : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === "rules" ? (
+          <>
+            <h1 className="mb-1 text-2xl font-extrabold tracking-tight text-slate-50 sm:text-3xl">
+              How to play
+            </h1>
+            <p className="mb-5 max-w-2xl text-sm text-slate-400">
+              A custom variant of checkers. The basics are familiar, but three
+              things change everything: single captures are illegal, some squares
+              kill, and promoting poisons a whole row.
+            </p>
+            <RulesPanel
+              onClose={() => setTab("play")}
+              closeLabel="Back to play"
+            />
+          </>
+        ) : (
+        <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-2">
         <section>
           <p className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium text-emerald-300">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
@@ -127,6 +173,14 @@ export function Lobby({ onOpen, lobby }: Props) {
               {lobby.busy ? "Working…" : "Create game"}
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={() => setTab("rules")}
+            className="mt-3 w-full text-center text-xs text-slate-500 transition hover:text-emerald-300"
+          >
+            New here? Read the 2-minute rules
+          </button>
 
           <Appearance />
 
@@ -201,6 +255,8 @@ export function Lobby({ onOpen, lobby }: Props) {
             />
           </div>
         </section>
+        </div>
+        )}
       </main>
     </div>
   );

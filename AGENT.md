@@ -73,7 +73,7 @@ storage exception there, don't sprinkle `HTTPException` through the store.
 | `src/lib/format.ts` | `timeText` clock formatting |
 | `src/lib/sound.ts` | `cue()` WebAudio blips |
 | `src/lib/clipboard.ts` | `copyText()` with execCommand fallback |
-| `src/hooks/useGame.ts` | **all** game state: polling, auto-join, actions, sounds |
+| `src/hooks/useGame.ts` | **all** game state: SSE stream, auto-join, actions, sounds |
 | `src/hooks/useLobby.ts` | presence heartbeat, invite polling, redirect on match |
 | `src/components/GameScreen.tsx` | layout only; composes the hook + pieces below |
 | `src/components/Board.tsx` | grid, highlights, piece slots |
@@ -81,7 +81,8 @@ storage exception there, don't sprinkle `HTTPException` through the store.
 | `src/components/MoveList.tsx` | move history rows |
 | `src/components/GameOverCard.tsx` | result modal + rematch |
 | `src/components/CopyButton.tsx` | copy with "Copied!" feedback |
-| `src/components/Lobby.tsx` | landing page + appearance customizer |
+| `src/components/Lobby.tsx` | landing page, Play/How-to-play tabs, appearance customizer |
+| `src/components/RulesPanel.tsx` | rules copy (one open section at a time) + per-section mini-board scenes |
 
 Rule of thumb: components render, hooks own state, `lib/` is pure.
 
@@ -107,7 +108,7 @@ Rule of thumb: components render, hooks own state, `lib/` is pure.
 ## Commands
 
 ```sh
-uv run pytest tests -q        # backend tests (63 passing)
+uv run pytest tests -q        # backend tests (119 passing)
 cd web && npm run build       # tsc --noEmit + vite build
 uv run uvicorn engine.api:app --port 8000   # serves web/dist at /
 cd web && npm run dev         # Vite on :5173, proxies /games to :8000
@@ -163,7 +164,7 @@ to **https://github.com/dilaferaw/engine** (public, branch `master`).
 
 ```sh
 git fetch origin --prune && git status --short --branch  # expect clean, no ahead/behind
-uv run pytest tests -q                                   # expect 63 passed
+uv run pytest tests -q                                   # expect 119 passed
 cd web && npm run build                                  # tsc --noEmit + vite build
 ```
 

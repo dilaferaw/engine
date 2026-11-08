@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useId } from "react";
+import type { ComponentType } from "react";
 import type { Color, Kind } from "./types";
 
 export type PieceSetId = "classic" | "flat" | "outline" | "stone";
@@ -11,7 +12,12 @@ export interface PieceArtProps {
 
 function Classic({ color, kind }: { color: Color; kind: Kind }) {
   const white = color === "WHITE";
-  const gid = white ? "pc-w" : "pc-b";
+  // Gradient ids must be unique per instance: with a fixed id, a copy of the
+  // board rendered earlier in the DOM (and hidden) can define the id first,
+  // and url(#pc-w) then resolves inside a display:none subtree, which does
+  // not paint. `useId` values contain colons, which are unsafe in url(#...).
+  const uid = useId().replace(/:/g, "");
+  const gid = white ? `pc-w-${uid}` : `pc-b-${uid}`;
   const ring = white ? "#00000018" : "#ffffff1f";
   const crown = white ? "#b7781f" : "#f0b429";
   return (
@@ -108,7 +114,7 @@ function Stone({ color, kind }: { color: Color; kind: Kind }) {
   );
 }
 
-const SETS: Record<PieceSetId, (p: { color: Color; kind: Kind }) => ReactNode> = {
+const SETS: Record<PieceSetId, ComponentType<{ color: Color; kind: Kind }>> = {
   classic: Classic,
   flat: Flat,
   outline: Outline,
@@ -116,6 +122,8 @@ const SETS: Record<PieceSetId, (p: { color: Color; kind: Kind }) => ReactNode> =
 };
 
 export function PieceArt({ color, kind, set }: PieceArtProps) {
+  // Rendered as a component rather than called as a function, so each set
+  // can use hooks (the classic set needs useId for its gradient ids).
   const Art = SETS[set];
-  return <>{Art({ color, kind })}</>;
+  return <Art color={color} kind={kind} />;
 }

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useGame } from "../hooks/useGame";
 import { timeText } from "../lib/format";
 import type { Color } from "../types";
@@ -6,6 +7,7 @@ import { CopyButton } from "./CopyButton";
 import { GameOverCard } from "./GameOverCard";
 import { MoveList } from "./MoveList";
 import { PlayerCard } from "./PlayerCard";
+import { RulesPanel } from "./RulesPanel";
 
 interface Props {
   gameId: string;
@@ -30,6 +32,7 @@ export function GameScreen({ gameId, onLeave }: Props) {
     rematch,
     declineRematch,
   } = useGame(gameId, onLeave);
+  const [showRules, setShowRules] = useState(false);
 
   if (!state) {
     return (
@@ -83,6 +86,15 @@ export function GameScreen({ gameId, onLeave }: Props) {
             Checkers
           </button>
           <div className="flex items-center gap-2 text-xs text-slate-400">
+            <button
+              type="button"
+              onClick={() => setShowRules(true)}
+              aria-label="How to play"
+              title="How to play"
+              className="grid h-7 w-7 place-items-center rounded-md border border-white/10 font-semibold text-slate-300 transition hover:bg-white/10 hover:text-slate-100"
+            >
+              ?
+            </button>
             <span className="hidden rounded-md bg-white/5 px-2 py-1 font-mono sm:block">
               #{gameId.slice(0, 8)}
             </span>
@@ -196,10 +208,39 @@ export function GameScreen({ gameId, onLeave }: Props) {
             <p>Captures are forced and longest-capture wins the choice.</p>
             <p className="mt-1">A piece whose only capture is length-1 is frozen (blue).</p>
             <p className="mt-1">Promotion poisons the opponent's home row.</p>
-            <p className="mt-1">No legal move on your turn, or leaving mid-game, loses.</p>
+            <p className="mt-1">If you have no legal move on your turn, you lose.</p>
+            <button
+              type="button"
+              onClick={() => setShowRules(true)}
+              className="mt-2 font-medium text-emerald-300 transition hover:text-emerald-200"
+            >
+              Read the full rules →
+            </button>
           </section>
         </aside>
       </div>
+
+      {showRules && (
+        <div className="fixed inset-0 z-30 overflow-y-auto bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="mx-auto w-full max-w-4xl pb-10">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-slate-50">How to play</h2>
+              <button
+                type="button"
+                onClick={() => setShowRules(false)}
+                aria-label="Close rules"
+                className="rounded-md border border-white/10 px-2.5 py-1 text-xs font-medium text-slate-300 transition hover:bg-white/10"
+              >
+                Close
+              </button>
+            </div>
+            <RulesPanel
+              onClose={() => setShowRules(false)}
+              closeLabel="Back to the game"
+            />
+          </div>
+        </div>
+      )}
 
       {state.game_over && (
         <GameOverCard

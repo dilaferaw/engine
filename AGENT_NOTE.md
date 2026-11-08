@@ -5,9 +5,8 @@ handoff document for humans (architecture, invariants). This file is the
 "don't rediscover this the hard way" list. Keep it short, dated, and delete
 entries that stop being true.
 
-Last updated: 2026-11-01 (evening: UI pass — opponent last-move highlight,
-decline-rematch flow, lobby join-by-link removed, pushed to
-`github.com/dilaferaw/engine`).
+Last updated: 2026-11-08 (rules tab with per-section mini-boards, SVG gradient
+id fix, `START_HERE.md` added; 119 tests green).
 
 ## Environment (this machine)
 
@@ -24,7 +23,7 @@ decline-rematch flow, lobby join-by-link removed, pushed to
   venv. Matchmaking tests use `MemoryLobbyStore`; the Redis store is
   type-checked only. To actually exercise it: `uv sync --extra redis` plus a
   local `docker run --rm -p 6379:6379 redis:7`.
-- Tests: `uv run pytest tests` → 94 passed (1 harmless Starlette/httpx
+- Tests: `uv run pytest tests` → 119 passed (1 harmless Starlette/httpx
   deprecation warning). Lint: `uv run ruff check engine tests` — 5 *pre-existing*
   warnings remain (`constants.py` UP042 x2, long lines in `geometry.py`,
   `moves.py`, `rules.py`). Don't attribute them to your change.
@@ -170,7 +169,7 @@ REDIS_URL=redis://localhost:6379/0 uv run --extra redis uvicorn engine.api:app -
 - The client fires the leave beacon from the `useGame` cleanup effect with
   `keepalive: true`. **Consequence: a page refresh also forfeits** — if that is
   unwanted, move the beacon to `pagehide` and only for real unloads.
-- Verified 2026-11-01: `uv run pytest tests` → **118 passed**, mypy clean, ruff
+- Verified 2026-11-01: `uv run pytest tests` → **119 passed**, mypy clean, ruff
   unchanged (5 pre-existing), `npm run build` clean.
 
 ## 2026-11-01 (evening): UI pass — last move, rematch exit, lobby cleanup
@@ -256,6 +255,41 @@ Gaps, in priority order:
   `AGENT.md` known issues).
 - Lobby polling is 1.5s; if that feels chatty, Redis pub/sub is the upgrade
   path (documented in `MATCHMAKING.md`).
+
+## 2026-11-08: rules tab, stale bundle, and the SVG id trap
+
+- **The backend serves `web/dist`; a stale bundle is indistinguishable from a
+  code bug.** "Last-move highlight shows my own move" was the Nov-1 **14:11**
+  build, while `useGame.ts` already had the fix from **17:23**. `stat`
+  `web/dist/index.html` against the file you edited *before* debugging any
+  frontend symptom. `npm run build` is mandatory after every `web/src` change.
+- **Duplicate SVG gradient ids make pieces paint with no fill** — they look
+  transparent and black/white become indistinguishable. `pieceArt.tsx` used
+  fixed ids `pc-w`/`pc-b`, and `RulesPanel` renders two boards (inline
+  `lg:hidden` + sidebar `hidden lg:block`), so `url(#pc-w)` resolved inside a
+  `display:none` subtree. Fixed with `useId().replace(/:/g, "")` per instance;
+  `PieceArt` now renders its set as a component (`<Art … />`) so it can use
+  hooks. **If piece artwork ever looks blank, suspect this before any CSS.**
+  The `will-change`/compositing theory was a red herring — it cost two rounds.
+- **`startupcmd.bash` is broken** (stray newline after `engine.`). Use
+  `ztartupcmd.bash`, or `uv run uvicorn engine.api:app --port 8000 --host 0.0.0.0`.
+  `uv run python -m engine.api` works but binds `127.0.0.1` only.
+- **Port 8000 is often already taken by `~/Projects/nostalgia`**
+  (`uvicorn main:app --reload`). Check `ss -ltnp | grep :8000` before assuming
+  the server failed.
+- **No legal move is a LOSS, not a draw** — `engine/rules.py` docstring and
+  `tests/test_rules.py:21`. The owner's chat summary once said draw; the code
+  and its tests are authoritative.
+- Added `web/src/components/RulesPanel.tsx`: one section open at a time, with a
+  per-section mini-board scene on the right (sticky `lg:` column, inline below
+  it on narrow screens). Square math lives there: promo `a1=0` / `h8=63`, White
+  death `c1/e1/g1=2/4/6`, Black death `b8/d8/f8=57/59/61`. Wired into
+  `Lobby.tsx` (Play / How-to-play tabs) and a `?` overlay in `GameScreen.tsx`.
+- Root **`START_HERE.md`** added: short entry point with the grep/head/tail
+  token-efficiency rules, the run commands, and the traps above. Point new
+  agents at it instead of this file.
+- Verified 2026-11-08: `uv run pytest tests -q` → **119 passed**, exit 0;
+  `cd web && npm run build` clean (`tsc --noEmit` + vite).
 
 ## How to use this file
 
