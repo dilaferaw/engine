@@ -5,8 +5,9 @@ handoff document for humans (architecture, invariants). This file is the
 "don't rediscover this the hard way" list. Keep it short, dated, and delete
 entries that stop being true.
 
-Last updated: 2026-11-01 (toolbx env correction: Node is available; AGENT.md now
-requires reading/writing this file on every start and every commit).
+Last updated: 2026-11-01 (evening: UI pass — opponent last-move highlight,
+decline-rematch flow, lobby join-by-link removed, pushed to
+`github.com/dilaferaw/engine`).
 
 ## Environment (this machine)
 
@@ -171,6 +172,73 @@ REDIS_URL=redis://localhost:6379/0 uv run --extra redis uvicorn engine.api:app -
   unwanted, move the beacon to `pagehide` and only for real unloads.
 - Verified 2026-11-01: `uv run pytest tests` → **118 passed**, mypy clean, ruff
   unchanged (5 pre-existing), `npm run build` clean.
+
+## 2026-11-01 (evening): UI pass — last move, rematch exit, lobby cleanup
+
+- **Board shows the *opponent's* last move.** `useGame` no longer keeps a
+  `lastMove` state that it sets on your own `playMove`; it derives it from
+  `state.history` — last record whose `player` is the opponent colour. The
+  `MoveRecord.player` field is what makes this work; **an unseated token's
+  moves have `player: null`** and are skipped, so a spectator sees no highlight
+  (fine, but don't "fix" it by guessing from `board.turn`).
+- **Decline-rematch now exits both players.** New wire field
+  `rematch_declined` on `GameRecord` (`models.py`, serialized in `state()`),
+  set in `InMemoryGameStore.decline_rematch` *only when the other seat had a
+  pending flag*, cleared by `request_rematch` and `reset()`. The client is
+  dumb about it: one effect in `useGame` calls `onLeave()` when it is true, so
+  decliner and requester both land in their lobby. Because it is a plain bool
+  on the record it survives until the next rematch request — if you ever add
+  "stay on the result screen", you need a per-seat flag instead.
+- `decline_rematch` still clears only the caller's flag (see the earlier
+  per-seat fix) — the API test for that behaviour still passes.
+- **`GameOverCard`** secondary button reads "Decline rematch" when
+  `state.rematch[opponent]` is set, otherwise "Back to lobby". Note the
+  *primary* button already morphs into "Accept rematch" in that state.
+- **Lobby no longer has join-by-link.** The divider, the paste-invite input,
+  the Join button and all their state (`joinId`, `busy`, local `error`,
+  `api.joinGame` import) are gone; matchmaking is the only way in. "Recent
+  games" still lists `checkers-games` from `localStorage` but now opens via a
+  local `open()` helper that also records the id. **Don't reintroduce a local
+  `join()` in `Lobby.tsx`** — `useGame` auto-joins the single free seat, so a
+  manual join would race it.
+- `web/src/types.ts` gained `rematch_declined: boolean`; if you add a store
+  backend, it must persist that flag or the requester never leaves.
+- Tests: `tests/test_api.py::test_declining_a_pending_rematch_flags_both_players`.
+  Verified 2026-11-01: `uv run pytest -q` all green, `uv run mypy engine` clean,
+  `cd web && npx tsc --noEmit` clean. ruff still 5 pre-existing findings.
+
+## 2026-11-01: database readiness (assessment, nothing built)
+
+Asked and answered; **no code written**, so this is the plan if the next session
+picks it up. The seam is already right: routes only touch `Repository`
+(`engine/api/deps.py`), so a SQL backend is a new `engine/storage/sql.py` plus
+one wiring change in `engine/api/application.py`. `GameRecord` already carries
+board (has `to_dict`/`from_dict`), seats, names, history, version, flags.
+Gaps, in priority order:
+
+1. **No durable player identity.** `X-Player-Token` is random per tab in
+   `sessionStorage` (`web/src/api.ts:getToken`); close the tab and the player is
+   a stranger. Need a `players(token, display_name, created_at)` table and a
+   real login/link step before "game history per player" means anything.
+2. **No timestamps** anywhere — not on `GameRecord`, not on history entries.
+3. **History lives only in the record** (`history: list[dict]`), not queryable.
+   Split into `moves(game_id, ply, from_sq, to_sq, captures, dies, player,
+   created_at)`; keep `board_json` on `games` for fast load.
+4. **SSE is in-process** (`engine/api/realtime.py`). A DB backend still needs
+   `_changed()` semantics (bump `version` *and* publish) — see the earlier trap —
+   and multi-worker needs Redis pub/sub. `redis` is already an optional dep and
+   `engine/matchmaking/redis_store.py` is the precedent to copy.
+5. `games` needs `status`/`ended_at` (or just derive from the board on load).
+
+## Git / deploy notes
+
+- Remote is `origin = https://github.com/dilaferaw/engine.git`; `master` tracks
+  `origin/master`, so plain `git push` works (no `-u` needed). A local
+  `backup/pre-rewrite-202610310813` style branch exists — don't delete it.
+- Pushed 2026-11-01: `07a444e Show opponent's last move; decline-rematch flow;
+  drop lobby join-by-link` (`e83b8bd..07a444e`).
+- `.swn`, `.swo`, `.swp`, `backend.log.txt` are **untracked junk** in the repo
+  root; leave them untracked. `.gitignore` does not cover them.
 
 ## Open threads
 
