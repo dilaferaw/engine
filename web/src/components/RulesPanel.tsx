@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { PieceArt, useTheme } from "../theme";
 import type { Color, Kind } from "../types";
+import { orderFor } from "../lib/board";
 
 // Engine square indices: a1 = 0, h8 = 63.
 const WHITE_PROMO = 0; // a1
@@ -86,9 +87,10 @@ function MiniBoard({ scene }: { scene: Scene }) {
   return (
     <div className="w-full">
       <div className="grid grid-cols-8 overflow-hidden rounded-lg ring-1 ring-white/10">
-        {Array.from({ length: 64 }, (_, i) => {
-          // i counts from the top-left; rank 8 is drawn at the top.
-          const sq = (7 - Math.floor(i / 8)) * 8 + (i % 8);
+        {orderFor(null).map((sq) => {
+          // Same ordering as the real board (`Board.tsx`), so rank 1 is at the
+          // top-left and a1 is a dark square in both views. Flipping only the
+          // rank here would mirror the grid and invert every square colour.
           const r = Math.floor(sq / 8);
           const f = sq % 8;
           const dark = (f + r) % 2 === 0;
@@ -236,7 +238,7 @@ const SECTIONS: Section[] = [
       <Bullets
         items={[
           "8×8 board, only the dark squares are used — 32 in total. Each side starts with 12 men on three rows.",
-          "White starts at the top and moves down the board. Black starts at the bottom and moves up. White moves first.",
+          "White starts at the bottom and moves up the board. Black starts at the top and moves down. White moves first.",
           "The far row — the opponent's back row — is special. It holds one promotion square and three death squares.",
           "White promotes on a1 and dies on c1, e1 and g1. Black promotes on h8 and dies on b8, d8 and f8.",
           "The two promotion squares sit at opposite ends of the long dark diagonal.",
@@ -245,11 +247,11 @@ const SECTIONS: Section[] = [
     ),
     scene: {
       pieces: [
-        // White: ranks 8, 7, 6 (top three).
+        // White: ranks 8, 7, 6 (bottom three).
         ...[57, 59, 61, 63, 48, 50, 52, 54, 41, 43, 45, 47].map(
           (sq) => ({ sq, color: "WHITE" as const }),
         ),
-        // Black: ranks 1, 2, 3 (bottom three).
+        // Black: ranks 1, 2, 3 (top three).
         ...[0, 2, 4, 6, 9, 11, 13, 15, 16, 18, 20, 22].map((sq) => ({
           sq,
           color: "BLACK" as const,
@@ -258,7 +260,7 @@ const SECTIONS: Section[] = [
       promo: [WHITE_PROMO, BLACK_PROMO],
       death: [...WHITE_DEATH, ...BLACK_DEATH],
       caption:
-        "White at the top, Black at the bottom. Each far row holds one promotion square (gold) and three death squares (red).",
+        "White at the bottom, Black at the top. Each far row holds one promotion square (gold) and three death squares (red).",
     },
   },
   {
@@ -350,7 +352,7 @@ const SECTIONS: Section[] = [
           "Kings freeze too: a king whose only capture along its diagonals is a single one is frozen exactly like a man.",
           "Two pieces facing each other can freeze each other at the same time — as in the picture, where both pieces are frozen.",
           "A frozen piece still blocks the board, and it can still be captured like any other piece.",
-          "Freezing can change from move to move — a piece that was stuck may free up, and vice versa. If all your remaining pieces are frozen, you have no legal move, which is a draw.",
+          "Freezing can change from move to move — a piece that was stuck may free up, and vice versa. If all your remaining pieces are frozen, you have no legal move, which is a loss.",
         ]}
       />
     ),

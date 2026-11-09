@@ -6,8 +6,8 @@ handoff document for humans (architecture, invariants). This file is the
 entries that stop being true.
 
 Last updated: 2026-11-09 (SSE stall watchdog + generation counter, desktop
-board height cap). Previous: 2026-11-08 rules tab, SVG gradient id fix,
-`START_HERE.md`; 119 tests green.
+board height cap, mini-board square colours). Previous: 2026-11-08 rules tab,
+SVG gradient id fix, `START_HERE.md`; 119 tests green.
 
 ## Environment (this machine)
 
@@ -311,8 +311,23 @@ Gaps, in priority order:
   width-driven, so on a short desktop window it grew past the fold; 15 rem
   covers header, both player cards and padding. Narrow screens keep the
   full-width layout.
+- **Mini-boards had inverted square colours: a rank-only flip is a mirror.**
+  `Board.tsx` builds its grid with `orderFor(color)` (identity for White, so
+  `a1` is top-left and dark). `RulesPanel`'s `MiniBoard` did its own index
+  math, `sq = (7 - row) * 8 + col` — ranks flipped, files not. A mirror
+  reverses square parity, so *every* square changed colour, and the pieces
+  (keyed by `sq`) appeared to be on the wrong squares even though all the
+  scene `sq` values were already valid dark squares. Any 90°/180° rotation
+  preserves parity; only a mirror breaks it. Fixed by importing `orderFor`
+  into `RulesPanel` so the two boards cannot diverge again. The mini-board
+  deliberately stays in White orientation even for a Black viewer (the real
+  board rotates); per-viewer diagrams would falsify the prose.
+- Same pass: `RulesPanel` claimed no-legal-move "is a draw" while line 218 of
+  the same file and `engine/rules.py` say **loss**. Corrected. Grep
+  `'draw'` in `web/src` and you will still hit `state.is_draw` — that is the
+  engine's field, not a rules claim.
 - Verified 2026-11-09: `cd web && npm run build` clean (`tsc --noEmit` +
-  vite, 46 modules).
+  vite, 46 modules; bundle hash changed, so `web/dist` really updated).
 
 ## How to use this file
 
