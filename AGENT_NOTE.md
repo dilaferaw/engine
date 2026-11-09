@@ -5,8 +5,9 @@ handoff document for humans (architecture, invariants). This file is the
 "don't rediscover this the hard way" list. Keep it short, dated, and delete
 entries that stop being true.
 
-Last updated: 2026-11-08 (rules tab with per-section mini-boards, SVG gradient
-id fix, `START_HERE.md` added; 119 tests green).
+Last updated: 2026-11-09 (SSE stall watchdog + generation counter, desktop
+board height cap). Previous: 2026-11-08 rules tab, SVG gradient id fix,
+`START_HERE.md`; 119 tests green.
 
 ## Environment (this machine)
 
@@ -290,6 +291,28 @@ Gaps, in priority order:
   agents at it instead of this file.
 - Verified 2026-11-08: `uv run pytest tests -q` → **119 passed**, exit 0;
   `cd web && npm run build` clean (`tsc --noEmit` + vite).
+
+## 2026-11-09: SSE stall watchdog and board height cap
+
+- **A dead socket can leave `fetch` pending forever** — no `error` event, so
+  no `catch`, no retry, and the board silently freezes until reload. Wi-Fi
+  drops and phone sleep both do this. `useGame.ts` now keeps a `lastActivity`
+  timestamp updated on *any* bytes (including the server's `: keepalive`
+  comments, which carry no data) and a 4 s interval that aborts and
+  reconnects after 32 s of silence — two missed keepalives (15 s each).
+  `streamGame` in `api.ts` gained the optional `onActivity` callback for this.
+- **Each stream carries a generation number.** Watchdog and
+  `visibilitychange` both abort and reconnect while the old `fetch` is still
+  unwinding; without `my !== gen` checks the replaced stream's `finally`
+  schedules its own reconnect and two live connections each apply every
+  change — duplicate moves. Any new reconnect path must bump `gen` too.
+- **Board column is capped by viewport height on `lg:` only**:
+  `lg:max-w-[min(100%,calc(100dvh_-_15rem))]`. The board is square and
+  width-driven, so on a short desktop window it grew past the fold; 15 rem
+  covers header, both player cards and padding. Narrow screens keep the
+  full-width layout.
+- Verified 2026-11-09: `cd web && npm run build` clean (`tsc --noEmit` +
+  vite, 46 modules).
 
 ## How to use this file
 

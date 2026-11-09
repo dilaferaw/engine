@@ -74,6 +74,7 @@ async function streamGame(
   id: string,
   onState: (state: GameState) => void,
   signal: AbortSignal,
+  onActivity?: () => void,
 ): Promise<void> {
   const name = getNickname();
   const res = await fetch(`/games/${id}/events`, {
@@ -92,6 +93,9 @@ async function streamGame(
   for (;;) {
     const { value, done } = await reader.read();
     if (done) return;
+    // Any bytes at all — including the server's `: keepalive` comments, which
+    // carry no data — prove the socket is still alive.
+    onActivity?.();
     buffer += decoder.decode(value, { stream: true });
     let split = buffer.indexOf("\n\n");
     while (split >= 0) {

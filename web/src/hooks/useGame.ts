@@ -6,6 +6,11 @@ import type { GameState, Move } from "../types";
 // Reconnect backoff for the event stream: 0.3s, 0.6s, 1.2s ... capped at 5s.
 const FIRST_RETRY_MS = 300;
 const MAX_RETRY_MS = 5000;
+// The server sends a keepalive comment every 15s. Silence for more than two
+// of those means the socket is dead but the fetch has not noticed; the
+// watchdog then drops it and reconnects. Checked this often.
+const STALL_MS = 32000;
+const WATCHDOG_MS = 4000;
 
 function message(e: unknown, fallback: string): string {
   return e instanceof ApiError ? e.message : fallback;
@@ -62,29 +67,53 @@ export function useGame(gameId: string, onLeave: () => void): Game {
     let retry = FIRST_RETRY_MS;
     let timer = 0;
     let ctrl = new AbortController();
+    // Every stream gets a generation number. A stream that has been replaced
+    // (by the watchdog or the visibility handler) must not schedule its own
+    // reconnect, or two connections race and each change is applied twice.
+    let gen = 0;
+    let lastActivity = Date.now();
 
     const connect = () => {
+      const my = ++gen;
       ctrl = new AbortController();
+      lastActivity = Date.now();
       api
-        .streamGame(gameId, apply, ctrl.signal)
+        .streamGame(gameId, apply, ctrl.signal, () => {
+          lastActivity = Date.now();
+          retry = FIRST_RETRY_MS;
+        })
         .then(() => {
           retry = FIRST_RETRY_MS;
         })
         .catch((e: unknown) => {
-          if (cancelled || (e instanceof DOMException && e.name === "AbortError"))
-            return;
+          if (cancelled || my !== gen) return;
+          if (e instanceof DOMException && e.name === "AbortError") return;
           retry = Math.min(retry * 2, MAX_RETRY_MS);
           setError(e instanceof Error ? e.message : "Lost connection");
         })
         .finally(() => {
-          if (!cancelled) timer = window.setTimeout(connect, retry);
+          if (!cancelled && my === gen && !document.hidden) {
+            timer = window.setTimeout(connect, retry);
+          }
         });
     };
+
+    // A socket that dies without an error event (common on Wi-Fi, and when a
+    // phone sleeps) leaves the fetch pending forever: no `catch`, no retry,
+    // and the board freezes until the page is reloaded. Detect the silence
+    // and reconnect instead of waiting for the user.
+    const watchdog = window.setInterval(() => {
+      if (document.hidden || Date.now() - lastActivity < STALL_MS) return;
+      gen++; // the stalled stream must not schedule its own retry
+      ctrl.abort();
+      connect();
+    }, WATCHDOG_MS);
 
     // A hidden tab cannot paint anyway; close the stream so the server does
     // not hold a socket for nobody, and reconnect when it comes back.
     const onVisibility = () => {
       if (document.hidden) {
+        gen++;
         ctrl.abort();
       } else {
         window.clearTimeout(timer);
@@ -96,8 +125,10 @@ export function useGame(gameId: string, onLeave: () => void): Game {
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       cancelled = true;
+      gen++;
       ctrl.abort();
       window.clearTimeout(timer);
+      window.clearInterval(watchdog);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [gameId]);

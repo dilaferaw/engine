@@ -110,7 +110,10 @@ export function GameScreen({ gameId, onLeave }: Props) {
       </header>
 
       <div className="mx-auto grid max-w-6xl grid-cols-1 gap-5 px-3 py-4 lg:grid-cols-[minmax(0,1fr)_300px] lg:px-6 lg:py-6">
-        <div className="flex flex-col gap-2">
+        {/* The board is square and width-driven, so on a short desktop window
+            it can grow past the fold. Cap the column by viewport height on
+            lg+ only: 15rem covers the header, both player cards and padding. */}
+        <div className="mx-auto flex w-full flex-col gap-2 lg:max-w-[min(100%,calc(100dvh_-_15rem))]">
           <PlayerCard
             name={opponentName}
             color={opponent}
