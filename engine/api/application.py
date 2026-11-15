@@ -18,6 +18,23 @@ from engine.storage import GameRepository, InMemoryGameStore
 DEFAULT_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
 
 
+def _allowed_origins() -> list[str]:
+    """CORS origins: ``ALLOWED_ORIGINS`` (comma-separated) plus the Render URL.
+
+    In production the SPA is served from the same origin as the API, so CORS
+    is only needed for split deployments (e.g. Vite dev on :5173 talking to a
+    remote API). ``RENDER_EXTERNAL_URL`` is injected by Render automatically.
+    """
+    import os
+
+    raw = os.environ.get("ALLOWED_ORIGINS", "")
+    origins = [o.strip() for o in raw.split(",") if o.strip()]
+    render_url = os.environ.get("RENDER_EXTERNAL_URL")
+    if render_url:
+        origins.append(render_url)
+    return origins or list(DEFAULT_ORIGINS)
+
+
 def create_app(
     repository: GameRepository | None = None,
     *,
@@ -32,7 +49,7 @@ def create_app(
     app = FastAPI(title="Checkers Engine API", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=list(DEFAULT_ORIGINS),
+        allow_origins=_allowed_origins(),
         allow_methods=["*"],
         allow_headers=["*"],
     )

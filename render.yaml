@@ -1,0 +1,30 @@
+# Render blueprint: one free web service serving the FastAPI app and the SPA.
+#
+# Free tier caveats:
+#   * The service sleeps after 15 min without inbound traffic and cold-starts
+#     in ~1 min. An open game tab (SSE keepalive every 15 s) keeps it awake.
+#   * One instance only, so MemoryLobbyStore is used (no REDIS_URL needed).
+#     Do NOT scale to multiple instances without Redis: games live in memory
+#     and matchmaking would not be shared between instances.
+#
+# Import this file via Render Dashboard -> New -> Blueprint, pointing at the repo.
+
+services:
+  - type: web
+    name: checkers-engine
+    runtime: python
+    plan: free
+    region: oregon
+    branch: master
+    buildCommand: bash scripts/build.sh
+    startCommand: uv run uvicorn engine.api:app --host 0.0.0.0 --port $PORT
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      # Uncomment and point at a Redis instance only if you scale beyond one
+      # instance; the free plan uses in-process lobby state.
+      # - key: REDIS_URL
+      #   sync: false
+      # - key: ALLOWED_ORIGINS
+      #   sync: false

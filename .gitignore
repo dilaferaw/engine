@@ -13,3 +13,8 @@ htmlcov/
 .DS_Store
 node_modules/
 web/dist/
+
+# Local env files (never commit real secrets); see .env.example
+.env
+.env.local
+.env.*.local
