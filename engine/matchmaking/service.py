@@ -37,9 +37,7 @@ class LobbyService:
         self._games = games
         self._lobby = lobby
 
-    def heartbeat(
-        self, token: str, name: str | None, *, busy: bool
-    ) -> None:
+    def heartbeat(self, token: str, name: str | None, *, busy: bool) -> None:
         """Refresh presence; busy players leave the queue and get no invites."""
         self._lobby.touch(token, clean_name(name), busy=busy)
         if busy:
@@ -80,14 +78,10 @@ class LobbyService:
                 )
         return self.status(token)
 
-    def accept(
-        self, token: str, invite_id: str, name: str | None
-    ) -> LobbyStatus:
+    def accept(self, token: str, invite_id: str, name: str | None) -> LobbyStatus:
         """Join the sender's game; fails when they stopped waiting."""
         invite = self._lobby.take_invite(token, invite_id)
-        sender = (
-            self._lobby.queued(invite.from_token) if invite is not None else None
-        )
+        sender = self._lobby.queued(invite.from_token) if invite is not None else None
         if invite is None or sender is None:
             raise InviteGone("invite is no longer available")
         self._match(sender, Queued(token, clean_name(name)))

@@ -13,6 +13,7 @@ from engine.storage import GameRepository
 TokenHeader = Annotated[str | None, Header(alias="X-Player-Token")]
 NameHeader = Annotated[str | None, Header(alias="X-Player-Name")]
 
+
 def get_repository(request: Request) -> GameRepository:
     """The active game repository, set by ``create_app`` on ``app.state``."""
     repo = getattr(request.app.state, "repository", None)

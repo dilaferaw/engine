@@ -67,7 +67,7 @@ def home_row(player: Player) -> frozenset[int]:
 
 
 def death_squares(player: Player) -> frozenset[int]:
-    """Static death squares for player (3.7): opponent home row minus own promotion square."""
+    """Death squares for player (3.7): opponent home row minus promotion square."""
     return home_row(other(player)) - {promotion_square(player)}
 
 

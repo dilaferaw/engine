@@ -87,7 +87,7 @@ def test_home_rows_explicit() -> None:
 
 
 def test_static_death_squares_set() -> None:
-    assert STATIC_DEATH_SQUARES == frozenset({2, 4, 6, 57, 59, 61})
+    assert frozenset({2, 4, 6, 57, 59, 61}) == STATIC_DEATH_SQUARES
 
 
 def test_step_off_board_returns_none() -> None:

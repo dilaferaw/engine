@@ -72,10 +72,18 @@ def test_king_quiet_slides_all_directions() -> None:
     b = make_board(white_kings=[27], black=[63])
     # NE stops before 63, which holds the black man.
     expected = {
-        36, 45, 54,
-        34, 41, 48,
-        20, 13, 6,
-        18, 9, 0,
+        36,
+        45,
+        54,
+        34,
+        41,
+        48,
+        20,
+        13,
+        6,
+        18,
+        9,
+        0,
     }
     assert {m.to_sq for m in king_quiet_moves(b, 27)} == expected
 

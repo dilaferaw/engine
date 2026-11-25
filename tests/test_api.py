@@ -134,33 +134,31 @@ def test_delete_game(client: TestClient) -> None:
 
 
 def test_join_assigns_second_seat(client: TestClient) -> None:
-    game_id = client.post(
-        "/games", headers={"X-Player-Token": "alice"}
-    ).json()["game_id"]
+    game_id = client.post("/games", headers={"X-Player-Token": "alice"}).json()[
+        "game_id"
+    ]
     alice = client.get(f"/games/{game_id}", headers={"X-Player-Token": "alice"}).json()
     assert alice["seats"] == {"WHITE": True, "BLACK": False}
     assert alice["your_color"] == "WHITE"
-    bob = client.post(
-        f"/games/{game_id}/join", headers={"X-Player-Token": "bob"}
-    )
+    bob = client.post(f"/games/{game_id}/join", headers={"X-Player-Token": "bob"})
     assert bob.status_code == 200
     assert bob.json()["your_color"] == "BLACK"
     assert bob.json()["seats"] == {"WHITE": True, "BLACK": True}
 
 
 def test_join_rejects_full_game(client: TestClient) -> None:
-    game_id = client.post(
-        "/games", headers={"X-Player-Token": "alice"}
-    ).json()["game_id"]
+    game_id = client.post("/games", headers={"X-Player-Token": "alice"}).json()[
+        "game_id"
+    ]
     client.post(f"/games/{game_id}/join", headers={"X-Player-Token": "bob"})
     resp = client.post(f"/games/{game_id}/join", headers={"X-Player-Token": "carol"})
     assert resp.status_code == 409
 
 
 def test_move_rejected_out_of_turn(client: TestClient) -> None:
-    game_id = client.post(
-        "/games", headers={"X-Player-Token": "alice"}
-    ).json()["game_id"]
+    game_id = client.post("/games", headers={"X-Player-Token": "alice"}).json()[
+        "game_id"
+    ]
     client.post(f"/games/{game_id}/join", headers={"X-Player-Token": "bob"})
     resp = client.post(
         f"/games/{game_id}/moves",
@@ -171,9 +169,9 @@ def test_move_rejected_out_of_turn(client: TestClient) -> None:
 
 
 def test_rematch_resets_after_both_accept(client: TestClient) -> None:
-    game_id = client.post(
-        "/games", headers={"X-Player-Token": "alice"}
-    ).json()["game_id"]
+    game_id = client.post("/games", headers={"X-Player-Token": "alice"}).json()[
+        "game_id"
+    ]
     client.post(f"/games/{game_id}/join", headers={"X-Player-Token": "bob"})
     client.post(
         f"/games/{game_id}/moves",
@@ -195,23 +193,19 @@ def test_rematch_resets_after_both_accept(client: TestClient) -> None:
 
 
 def test_rematch_requires_a_seat(client: TestClient) -> None:
-    game_id = client.post(
-        "/games", headers={"X-Player-Token": "alice"}
-    ).json()["game_id"]
-    resp = client.post(
-        f"/games/{game_id}/rematch", headers={"X-Player-Token": "eve"}
-    )
+    game_id = client.post("/games", headers={"X-Player-Token": "alice"}).json()[
+        "game_id"
+    ]
+    resp = client.post(f"/games/{game_id}/rematch", headers={"X-Player-Token": "eve"})
     assert resp.status_code == 403
 
 
 def test_decline_rematch_clears_only_the_decliners_request(client: TestClient) -> None:
-    game_id = client.post(
-        "/games", headers={"X-Player-Token": "alice"}
-    ).json()["game_id"]
+    game_id = client.post("/games", headers={"X-Player-Token": "alice"}).json()[
+        "game_id"
+    ]
     client.post(f"/games/{game_id}/join", headers={"X-Player-Token": "bob"})
-    client.post(
-        f"/games/{game_id}/rematch", headers={"X-Player-Token": "alice"}
-    )
+    client.post(f"/games/{game_id}/rematch", headers={"X-Player-Token": "alice"})
     cleared = client.post(
         f"/games/{game_id}/rematch/decline", headers={"X-Player-Token": "bob"}
     ).json()
@@ -228,9 +222,7 @@ def test_declining_a_pending_rematch_flags_both_players(client: TestClient) -> N
         f"/games/{game_id}/rematch", headers={"X-Player-Token": "alice"}
     ).json()
     assert asked["rematch_declined"] is False
-    client.post(
-        f"/games/{game_id}/rematch/decline", headers={"X-Player-Token": "bob"}
-    )
+    client.post(f"/games/{game_id}/rematch/decline", headers={"X-Player-Token": "bob"})
     for token in ("alice", "bob"):
         seen = client.get(f"/games/{game_id}", headers={"X-Player-Token": token})
         assert seen.json()["rematch_declined"] is True

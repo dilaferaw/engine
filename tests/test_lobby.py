@@ -56,9 +56,7 @@ def test_two_creates_pair_into_one_game(client: TestClient) -> None:
     alice = _status(client, "alice")
     assert alice["state"] == "matched"
     assert alice["game_id"] == second["game_id"]
-    state = client.get(
-        f"/games/{alice['game_id']}", headers=_head("bob")
-    ).json()
+    state = client.get(f"/games/{alice['game_id']}", headers=_head("bob")).json()
     assert state["seats"] == {"WHITE": True, "BLACK": True}
     # Whoever presses create second takes the empty game's first seat.
     assert state["your_color"] == "WHITE"

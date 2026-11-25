@@ -1,19 +1,19 @@
 """Enums and board-size constants (spec sections 3, 12, 21.3)."""
 
-from enum import Enum
+from enum import StrEnum
 
 BOARD_SIZE = 8
 NUM_SQUARES = 64
 
 
-class Player(str, Enum):
+class Player(StrEnum):
     """The two sides. JSON-safe string values."""
 
     WHITE = "WHITE"
     BLACK = "BLACK"
 
 
-class Kind(str, Enum):
+class Kind(StrEnum):
     """Piece kinds. JSON-safe string values."""
 
     MAN = "MAN"

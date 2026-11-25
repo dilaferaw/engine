@@ -79,9 +79,7 @@ def accept(
 
 
 @router.post("/invites/{invite_id}/decline", status_code=204)
-def decline(
-    lobby: Lobby, invite_id: str, token: TokenHeader = None
-) -> None:
+def decline(lobby: Lobby, invite_id: str, token: TokenHeader = None) -> None:
     lobby.decline(_required(token), invite_id)
 
 

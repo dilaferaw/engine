@@ -142,5 +142,5 @@ def captures_single(board: Board, sq: int) -> list[Move]:
 
 
 def captures_multi(board: Board, sq: int) -> list[Move]:
-    """Capture sequences of length >= 2 for one piece. Implements R3.1, R3.3, R3.5-R3.7."""
+    """Capture sequences of length >= 2. Implements R3.1, R3.3, R3.5-R3.7."""
     return [m for m in capture_sequences(board, sq) if m.length >= 2]

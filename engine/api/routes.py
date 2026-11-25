@@ -59,9 +59,9 @@ def get_game(
 @router.get("/games/{game_id}/moves")
 def get_legal_moves(repo: Repository, game_id: str) -> list[dict[str, Any]]:
     with translate():
-        moves: list[dict[str, Any]] = repo.require(game_id).state(
-            game_id, None
-        )["legal_moves"]
+        moves: list[dict[str, Any]] = repo.require(game_id).state(game_id, None)[
+            "legal_moves"
+        ]
         return moves
 
 

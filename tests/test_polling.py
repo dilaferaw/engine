@@ -116,9 +116,10 @@ def test_rematch_and_undo_bump_version(client: TestClient) -> None:
     assert stale["changed"] is False
     undone = client.post(f"/games/{game_id}/undo").json()
     assert undone["version"] > first["version"]
-    assert client.get(f"/games/{game_id}?after={first['version']}").json()[
-        "changed"
-    ] is True
+    assert (
+        client.get(f"/games/{game_id}?after={first['version']}").json()["changed"]
+        is True
+    )
 
 
 def test_after_on_unknown_game_is_404(client: TestClient) -> None:

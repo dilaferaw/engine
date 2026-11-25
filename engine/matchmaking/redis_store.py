@@ -125,9 +125,7 @@ class RedisLobbyStore:
         )  # decode_responses=True, so elements are str at runtime
         found = self._presence(tokens)
         return [
-            Queued(token, name)
-            for token, (name, busy) in found.items()
-            if not busy
+            Queued(token, name) for token, (name, busy) in found.items() if not busy
         ]
 
     def release(self, token: str) -> bool:
